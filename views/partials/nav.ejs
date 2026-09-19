@@ -1,0 +1,30 @@
+<!--
+    Shared top navigation. Include it from a page with an EJS include of
+    'partials/nav', passing { active: 'admin' } (or 'print' | 'disposables'
+    | 'sales' | 'reorder'). Omit `active` on pages that shouldn't highlight
+    anything. The scan-mode button is only rendered when `showScanMode` is
+    true (admin page).
+-->
+<nav class="topnav" aria-label="Main navigation">
+    <div class="topnav-inner">
+        <a href="/" class="topnav-brand">Vape Menu</a>
+        <button type="button" class="topnav-toggle" id="nav-toggle"
+                aria-label="Toggle navigation menu" aria-expanded="false"
+                aria-controls="nav-links" onclick="toggleNavMenu()">☰</button>
+        <div class="topnav-links" id="nav-links">
+            <a href="/" class="topnav-link <%= active === 'admin' ? 'active' : '' %>">Admin</a>
+            <a href="/print" class="topnav-link <%= active === 'print' ? 'active' : '' %>">Print Menu</a>
+            <a href="/print/disposables" class="topnav-link <%= active === 'disposables' ? 'active' : '' %>">Print Disposables</a>
+            <a href="/sales" class="topnav-link <%= active === 'sales' ? 'active' : '' %>">Sales</a>
+            <a href="/reorder" class="topnav-link <%= active === 'reorder' ? 'active' : '' %>">Reorder</a>
+            <% if (typeof showScanMode !== 'undefined' && showScanMode) { %>
+                <button type="button" id="scan-mode-btn" class="topnav-scan btn-success"
+                        onclick="toggleScanMode()"
+                        title="Toggle between Sell mode (scan = sell one) and Input mode (scan = fill barcode field)">Sell Mode</button>
+            <% } %>
+        </div>
+        <button type="button" class="topnav-theme" id="theme-toggle"
+                onclick="toggleTheme()" aria-label="Switch to dark mode"
+                title="Switch to dark mode">🌙</button>
+    </div>
+</nav>

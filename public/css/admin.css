@@ -1,0 +1,661 @@
+/* ============================================================
+   admin.css — admin panel + report pages (Sales / Reorder)
+   Colors come from the theme variables defined in base.css so
+   the dark-mode toggle works across every page.
+   ============================================================ */
+
+body {
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+        sans-serif;
+    line-height: 1.6;
+    color: var(--text);
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: var(--bg);
+}
+
+h1 {
+    color: var(--text-strong);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 10px;
+}
+
+/* ---------- Forms ---------- */
+.form-container {
+    background: var(--surface);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px var(--shadow);
+    margin-bottom: 30px;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    align-items: end;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+label {
+    font-weight: bold;
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+}
+
+input,
+select {
+    padding: 8px;
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    font-size: 1rem;
+    background: var(--surface);
+    color: var(--text);
+}
+
+input:disabled {
+    background: var(--header-bg);
+    color: var(--text-muted);
+}
+
+button {
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 4px;
+    border: none;
+    font-weight: bold;
+    transition: background 0.2s;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+}
+
+.btn-secondary {
+    background-color: var(--secondary);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: var(--secondary-hover);
+}
+
+.btn-danger {
+    background-color: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: var(--danger-hover);
+}
+
+.btn-success {
+    background-color: var(--success);
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: var(--success-hover);
+}
+
+/* ---------- Tables ---------- */
+.table-container {
+    background: var(--surface);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px var(--shadow);
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    min-width: 640px;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+th,
+td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border-light);
+}
+
+th {
+    background-color: var(--header-bg);
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    transition: background 0.2s;
+}
+
+th:hover {
+    background-color: var(--header-bg-hover);
+}
+
+.sort-asc::after {
+    content: " ▲";
+    font-size: 0.8rem;
+}
+
+.sort-desc::after {
+    content: " ▼";
+    font-size: 0.8rem;
+}
+
+.row-inactive {
+    opacity: 0.5;
+    background-color: var(--surface-alt);
+}
+
+.row-inactive td {
+    color: var(--text-muted);
+}
+
+/* Reorder list: rows marked as "ordered" are greyed out and sink to the bottom */
+.row-ordered {
+    opacity: 0.5;
+    background-color: var(--header-bg);
+}
+
+.row-ordered td {
+    color: var(--text-muted);
+}
+
+.row-ordered .reorder-toggle-btn {
+    opacity: 1;
+}
+
+.reorder-toggle-btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+
+/* ---------- Alerts ---------- */
+.alert {
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+
+.alert-error {
+    background-color: var(--alert-error-bg);
+    color: var(--alert-error-text);
+    border: 1px solid var(--alert-error-border);
+}
+
+.alert-success {
+    background-color: var(--alert-success-bg);
+    color: var(--alert-success-text);
+    border: 1px solid var(--alert-success-border);
+}
+
+/* ---------- Admin type tabs (Juices / Disposables) ---------- */
+.type-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.type-tab {
+    background: var(--tab-bg);
+    color: var(--text);
+    padding: 8px 20px;
+    border-radius: 4px;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.type-tab.active {
+    background: var(--primary);
+    color: white;
+}
+
+/* ---------- Stock controls ---------- */
+.stock-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stock-btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 1.1rem;
+    line-height: 1;
+    background-color: var(--secondary);
+    color: white;
+    border-radius: 4px;
+}
+
+.stock-btn:hover {
+    background-color: var(--secondary-hover);
+}
+
+.stock-input {
+    width: 64px;
+    text-align: center;
+    padding: 6px 4px;
+}
+
+/* ---------- Scan toast ---------- */
+.scan-status {
+    position: fixed;
+    top: 72px;
+    right: 16px;
+    z-index: 1000;
+    max-width: 420px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-weight: bold;
+    font-size: 0.95rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    animation: scan-slide-in 0.2s ease-out;
+}
+
+.scan-status.hidden {
+    display: none;
+}
+
+@keyframes scan-slide-in {
+    from {
+        transform: translateX(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.scan-success {
+    background-color: var(--alert-success-bg);
+    color: var(--alert-success-text);
+    border: 1px solid var(--alert-success-border);
+}
+
+.scan-error {
+    background-color: var(--alert-error-bg);
+    color: var(--alert-error-text);
+    border: 1px solid var(--alert-error-border);
+}
+
+.scan-warn {
+    background-color: var(--scan-warn-bg);
+    color: var(--scan-warn-text);
+    border: 1px solid var(--scan-warn-border);
+}
+
+.scan-info {
+    background-color: var(--scan-info-bg);
+    color: var(--scan-info-text);
+    border: 1px solid var(--scan-info-border);
+}
+
+/* ---------- Barcode ---------- */
+.barcode-yes {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.barcode-value {
+    font-family: Consolas, Monaco, monospace;
+    font-size: 0.9rem;
+}
+
+.barcode-btn {
+    padding: 4px 10px;
+    font-size: 0.85rem;
+}
+
+.hint {
+    font-weight: normal;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.hidden {
+    display: none;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.action-buttons button {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+
+/* ---------- Two-column layout: main content + right-side sales panel ---------- */
+.main-layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.main-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.sales-panel {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px var(--shadow);
+    padding: 16px;
+    position: sticky;
+    top: 72px;
+    max-height: calc(100vh - 88px);
+    display: flex;
+    flex-direction: column;
+}
+
+.sales-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.sales-panel-header h2 {
+    font-size: 1.05rem;
+    margin: 0;
+    color: var(--text-strong);
+}
+
+.sales-total {
+    background: var(--primary);
+    color: white;
+    font-weight: bold;
+    font-size: 1.1rem;
+    padding: 2px 12px;
+    border-radius: 16px;
+}
+
+.sales-list {
+    overflow-y: auto;
+    flex: 1;
+    margin: 0 -6px;
+    padding: 0 6px;
+}
+
+.sales-empty {
+    color: var(--text-faint);
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 20px 0;
+}
+
+.sales-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.sales-item:last-child {
+    border-bottom: none;
+}
+
+.sales-item-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.sales-item-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sales-item-time {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+}
+
+.sales-item.voided {
+    opacity: 0.5;
+}
+
+.sales-item.voided .sales-item-label {
+    text-decoration: line-through;
+}
+
+.sales-undo-btn {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+}
+
+.sales-link {
+    display: block;
+    text-align: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
+    color: var(--primary);
+    font-size: 0.88rem;
+    text-decoration: none;
+}
+
+.sales-link:hover {
+    text-decoration: underline;
+}
+
+.sales-voided-tag {
+    font-size: 0.78rem;
+    color: var(--text-faint);
+    font-style: italic;
+}
+
+/* ---------- Report pages (Sales / Reorder) ---------- */
+.report-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.report-tab {
+    background: var(--tab-bg);
+    color: var(--text);
+    padding: 8px 18px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.report-tab.active {
+    background: var(--primary);
+    color: white;
+}
+
+.report-tab-panel h2 {
+    margin-top: 24px;
+    font-size: 1.1rem;
+    color: var(--text-strong);
+}
+
+.report-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.report-empty {
+    color: var(--text-faint);
+    font-size: 0.95rem;
+    padding: 10px 0;
+}
+
+.reorder-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px var(--shadow);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+/* ============================================================
+   Accessibility: visible keyboard focus + comfortable touch targets
+   ============================================================ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.type-tab:focus-visible,
+.report-tab:focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* ============================================================
+   Responsive: stack the sales panel below the table on narrow windows
+   ============================================================ */
+@media (max-width: 1000px) {
+    .main-layout {
+        flex-direction: column;
+    }
+    .sales-panel {
+        width: 100%;
+        position: static;
+        max-height: none;
+    }
+}
+
+/* ============================================================
+   Responsive: turn tables into stacked "cards" on phones so no
+   column (e.g. the Ordered button) is pushed off-screen.
+   Each cell shows its column name via the data-label attribute.
+   ============================================================ */
+@media (max-width: 640px) {
+    body {
+        padding: 12px;
+    }
+
+    .table-container {
+        overflow-x: visible;
+        box-shadow: none;
+        background: transparent;
+    }
+
+    table {
+        min-width: 0;
+    }
+
+    table,
+    thead,
+    tbody,
+    tr,
+    td {
+        display: block;
+        width: 100%;
+    }
+
+    thead {
+        display: none;
+    }
+
+    tr {
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        margin-bottom: 12px;
+        padding: 4px 12px;
+        background: var(--surface);
+        box-shadow: 0 1px 3px var(--shadow);
+    }
+
+    td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid var(--border-light);
+        padding: 10px 0;
+        text-align: right;
+    }
+
+    td:last-child {
+        border-bottom: none;
+    }
+
+    /* Show the column name as a label on the left of each cell */
+    td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--text-muted);
+        text-align: left;
+        flex-shrink: 0;
+    }
+
+    /* Cells that hold buttons: keep the button on the right, full tap area */
+    td[data-label="Actions"],
+    td[data-label="Ordered"],
+    td[data-label="Barcode"] {
+        justify-content: flex-end;
+    }
+
+    td[data-label="Actions"]::before,
+    td[data-label="Ordered"]::before,
+    td[data-label="Barcode"]::before {
+        text-align: left;
+    }
+
+    /* Bigger touch targets on phones */
+    button,
+    .stock-btn,
+    .action-buttons button,
+    .reorder-toggle-btn,
+    .barcode-btn {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    .stock-controls {
+        justify-content: flex-end;
+    }
+
+    .action-buttons {
+        justify-content: flex-end;
+    }
+
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .scan-status {
+        top: auto;
+        bottom: 16px;
+        right: 12px;
+        left: 12px;
+        max-width: none;
+    }
+}

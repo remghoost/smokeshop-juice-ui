@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Report - Vape Menu</title>
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/admin.css">
+    <script>
+        // Apply the saved theme before paint to avoid a flash of the wrong theme
+        if (document.cookie.split('; ').some(function (c) { return c === 'theme=dark'; })) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+</head>
+<body>
+    <%- include('partials/nav', { active: 'sales' }) %>
+
+    <h1>Sales Report</h1>
+
+    <div class="report-controls">
+        <label>Type</label>
+        <select id="type-filter" onchange="setTypeFilter(this.value)">
+            <option value="all" <%= type === 'all' ? 'selected' : '' %>>All</option>
+            <option value="juice" <%= type === 'juice' ? 'selected' : '' %>>Juices</option>
+            <option value="disposable" <%= type === 'disposable' ? 'selected' : '' %>>Disposables</option>
+        </select>
+    </div>
+
+    <div class="report-tabs">
+        <button type="button" class="report-tab active" data-tab="daily" onclick="switchTab('daily')">Daily</button>
+        <button type="button" class="report-tab" data-tab="week" onclick="switchTab('week')">Last 7 Days</button>
+        <button type="button" class="report-tab" data-tab="lifetime" onclick="switchTab('lifetime')">Lifetime</button>
+    </div>
+
+    <!-- ===== Daily ===== -->
+    <section id="tab-daily" class="report-tab-panel">
+        <div class="report-controls">
+            <label for="daily-date">Date</label>
+            <input type="date" id="daily-date" value="<%= date %>" onchange="location.href='/sales?date=' + this.value + (document.getElementById('type-filter').value !== 'all' ? '&type=' + document.getElementById('type-filter').value : '')">
+            <% if (date !== today) { %>
+                <a href="/sales<%= type !== 'all' ? '?type=' + type : '' %>" class="btn-secondary" style="text-decoration: none;">Today</a>
+            <% } %>
+        </div>
+
+        <h2>Sold on <%= date %></h2>
+        <% if (daily.length === 0) { %>
+            <p class="report-empty">No sales recorded for this date.</p>
+        <% } else { %>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Brand</th>
+                            <th>Flavor</th>
+                            <th>MG</th>
+                            <th>Qty Sold</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% daily.forEach(row => { %>
+                            <tr>
+                                <td data-label="Brand"><%= row.brand_name %></td>
+                                <td data-label="Flavor"><%= row.flavor %></td>
+                                <td data-label="MG"><%= row.mg %>mg</td>
+                                <td data-label="Qty Sold"><%= row.qty %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+
+        <h2>Detailed Log</h2>
+        <% if (dailyLog.length === 0) { %>
+            <p class="report-empty">No sales recorded for this date.</p>
+        <% } else { %>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Brand</th>
+                            <th>Flavor</th>
+                            <th>MG</th>
+                            <th>Barcode</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% dailyLog.forEach(sale => { %>
+                            <tr class="<%= sale.voided ? 'row-inactive' : '' %>">
+                                <td data-label="Time"><%= new Date(sale.sold_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) %></td>
+                                <td data-label="Brand"><%= sale.brand_name %></td>
+                                <td data-label="Flavor"><%= sale.flavor %></td>
+                                <td data-label="MG"><%= sale.mg %>mg</td>
+                                <td data-label="Barcode" class="barcode-value"><%= sale.barcode || '—' %></td>
+                                <td data-label="Status"><%= sale.voided ? 'undone' : 'sold' %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+    </section>
+
+    <!-- ===== Last 7 Days ===== -->
+    <section id="tab-week" class="report-tab-panel hidden">
+        <h2>Top Sellers (last 7 days)</h2>
+        <% if (weekJuices.length === 0) { %>
+            <p class="report-empty">No sales in the last 7 days.</p>
+        <% } else { %>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Brand</th>
+                            <th>Flavor</th>
+                            <th>MG</th>
+                            <th>Qty Sold</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% weekJuices.forEach(row => { %>
+                            <tr>
+                                <td data-label="Brand"><%= row.brand_name %></td>
+                                <td data-label="Flavor"><%= row.flavor %></td>
+                                <td data-label="MG"><%= row.mg %>mg</td>
+                                <td data-label="Qty Sold"><%= row.qty %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+
+        <h2>Daily Totals</h2>
+        <% if (weekDays.length === 0) { %>
+            <p class="report-empty">No sales in the last 7 days.</p>
+        <% } else { %>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Units Sold</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% weekDays.forEach(row => { %>
+                            <tr>
+                                <td data-label="Date"><%= row.day %></td>
+                                <td data-label="Units Sold"><%= row.qty %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+    </section>
+
+    <!-- ===== Lifetime ===== -->
+    <section id="tab-lifetime" class="report-tab-panel hidden">
+        <h2>All-Time Top Sellers</h2>
+        <% if (lifetime.length === 0) { %>
+            <p class="report-empty">No sales recorded yet.</p>
+        <% } else { %>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Brand</th>
+                            <th>Flavor</th>
+                            <th>MG</th>
+                            <th>Qty Sold</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% lifetime.forEach(row => { %>
+                            <tr>
+                                <td data-label="Brand"><%= row.brand_name %></td>
+                                <td data-label="Flavor"><%= row.flavor %></td>
+                                <td data-label="MG"><%= row.mg %>mg</td>
+                                <td data-label="Qty Sold"><%= row.qty %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+    </section>
+
+    <script>
+        function switchTab(name) {
+            document.querySelectorAll('.report-tab-panel').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.report-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + name).classList.remove('hidden');
+            document.querySelector('.report-tab[data-tab="' + name + '"]').classList.add('active');
+        }
+
+        function setTypeFilter(value) {
+            const date = document.getElementById('daily-date').value;
+            const url = value === 'all' ? '/sales?date=' + date : '/sales?date=' + date + '&type=' + value;
+            location.href = url;
+        }
+    </script>
+    <script src="/js/theme.js"></script>
+</body>
+</html>

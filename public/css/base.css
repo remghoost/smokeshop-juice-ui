@@ -1,0 +1,256 @@
+/* ============================================================
+   base.css — shared theme variables, top navigation, theme toggle
+   Included on every page before the page-specific stylesheet.
+   ============================================================ */
+
+/* ---------- Theme variables (light is the default) ---------- */
+:root {
+    --bg: #f8f9fa;
+    --surface: #ffffff;
+    --surface-alt: #fdfdfd;
+    --text: #333;
+    --text-strong: #222;
+    --text-muted: #888;
+    --text-faint: #999;
+    --border: #ddd;
+    --border-light: #eee;
+    --input-border: #ccc;
+    --header-bg: #f1f3f5;
+    --header-bg-hover: #e2e6ea;
+    --tab-bg: #e2e6ea;
+    --shadow: rgba(0, 0, 0, 0.1);
+
+    --primary: #007bff;
+    --primary-hover: #0056b3;
+    --secondary: #6c757d;
+    --secondary-hover: #5a6268;
+    --success: #28a745;
+    --success-hover: #218838;
+    --danger: #dc3545;
+    --danger-hover: #bd2130;
+
+    --alert-error-bg: #f8d7da;
+    --alert-error-text: #721c24;
+    --alert-error-border: #f5c6cb;
+    --alert-success-bg: #d4edda;
+    --alert-success-text: #155724;
+    --alert-success-border: #c3e6cb;
+    --scan-warn-bg: #fff3cd;
+    --scan-warn-text: #856404;
+    --scan-warn-border: #ffeeba;
+    --scan-info-bg: #d1ecf1;
+    --scan-info-text: #0c5460;
+    --scan-info-border: #bee5eb;
+
+    --nav-bg: #ffffff;
+    --nav-border: #e2e6ea;
+    --nav-link-color: #333;
+    --nav-link-hover-bg: #f1f3f5;
+    --nav-active-bg: #007bff;
+    --nav-active-color: #ffffff;
+}
+
+/* ---------- Dark theme ---------- */
+html.dark {
+    --bg: #17181c;
+    --surface: #212228;
+    --surface-alt: #1c1d22;
+    --text: #d7d8dc;
+    --text-strong: #f0f1f3;
+    --text-muted: #9a9ba3;
+    --text-faint: #7c7d85;
+    --border: #34353d;
+    --border-light: #2a2b32;
+    --input-border: #45464f;
+    --header-bg: #2a2b32;
+    --header-bg-hover: #33343c;
+    --tab-bg: #2f3038;
+    --shadow: rgba(0, 0, 0, 0.45);
+
+    --primary: #3d8bfd;
+    --primary-hover: #2f7ae0;
+    --secondary: #8a929a;
+    --secondary-hover: #9aa2aa;
+    --success: #34c058;
+    --success-hover: #2aa84c;
+    --danger: #e5484d;
+    --danger-hover: #d13438;
+
+    --alert-error-bg: #3d2326;
+    --alert-error-text: #f0b3b8;
+    --alert-error-border: #5c3338;
+    --alert-success-bg: #1e3a28;
+    --alert-success-text: #a3d9b1;
+    --alert-success-border: #2d5238;
+    --scan-warn-bg: #3d3520;
+    --scan-warn-text: #e8d48a;
+    --scan-warn-border: #5c5030;
+    --scan-info-bg: #1e3338;
+    --scan-info-text: #9fd3dd;
+    --scan-info-border: #2d525a;
+
+    --nav-bg: #1d1e24;
+    --nav-border: #2c2d35;
+    --nav-link-color: #c9cad0;
+    --nav-link-hover-bg: #2a2b33;
+    --nav-active-bg: #3d8bfd;
+    --nav-active-color: #ffffff;
+}
+
+/* Respect a user's OS-level "reduce motion" preference */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ---------- Top navigation ---------- */
+.topnav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--nav-border);
+    box-shadow: 0 1px 3px var(--shadow);
+}
+
+.topnav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    flex-wrap: wrap;
+}
+
+.topnav-brand {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--text-strong);
+    text-decoration: none;
+    white-space: nowrap;
+    margin-right: 8px;
+}
+
+.topnav-brand:hover {
+    color: var(--primary);
+}
+
+.topnav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.topnav-link {
+    color: var(--nav-link-color);
+    text-decoration: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: background 0.15s, color 0.15s;
+}
+
+.topnav-link:hover {
+    background: var(--nav-link-hover-bg);
+    color: var(--text-strong);
+}
+
+.topnav-link.active {
+    background: var(--nav-active-bg);
+    color: var(--nav-active-color);
+}
+
+/* Scan-mode button lives in the nav on the admin page */
+.topnav-scan {
+    margin-left: 4px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    border: none;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+/* Theme toggle button (far right of the nav) */
+.topnav-theme {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--nav-border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.15s;
+}
+
+.topnav-theme:hover {
+    background: var(--nav-link-hover-bg);
+}
+
+/* Hamburger toggle (hidden on desktop) */
+.topnav-toggle {
+    display: none;
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--nav-border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text);
+}
+
+/* On narrow screens: collapse the links behind a hamburger */
+@media (max-width: 720px) {
+    .topnav-toggle {
+        display: inline-block;
+    }
+
+    .topnav-theme {
+        margin-left: 0;
+    }
+
+    .topnav-links {
+        display: none;
+        flex-basis: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        padding: 8px 0 12px;
+    }
+
+    .topnav-links.open {
+        display: flex;
+    }
+
+    .topnav-link {
+        padding: 12px 14px;
+        font-size: 1rem;
+    }
+
+    .topnav-scan {
+        margin-left: 0;
+        margin-top: 4px;
+        width: 100%;
+    }
+}
+
+/* Keyboard focus visibility (accessibility) */
+.topnav-link:focus-visible,
+.topnav-theme:focus-visible,
+.topnav-toggle:focus-visible,
+.topnav-scan:focus-visible,
+.topnav-brand:focus-visible {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+}

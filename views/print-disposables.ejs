@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Printable Menu - Disposable Vapes</title>
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/print.css">
+    <script>
+        // Apply the saved theme before paint to avoid a flash of the wrong theme
+        if (document.cookie.split('; ').some(function (c) { return c === 'theme=dark'; })) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+</head>
+<body>
+    <%- include('partials/nav', { active: 'disposables' }) %>
+    <div class="no-print">
+        <button onclick="window.print()" class="print-btn">Print Disposables</button>
+    </div>
+
+    <div class="menu-container">
+        <%
+        let currentBrand = null;
+
+        disposables.forEach(disposable => {
+            if (disposable.brand_name !== currentBrand) {
+                // Close the previous brand group (if any) before opening a new one
+                if (currentBrand !== null) {
+        %>
+                </ul>
+            </div>
+        <%
+                }
+                currentBrand = disposable.brand_name;
+        %>
+            <div class="brand-group">
+                <span class="brand-header"><%= currentBrand %></span>
+                <ul class="flavor-list">
+        <%
+            }
+        %>
+                <li class="flavor-item"><%= disposable.flavor %></li>
+        <%
+        });
+
+        // Close the final brand group
+        if (disposables.length > 0) {
+        %>
+                </ul>
+            </div>
+        <%
+        }
+        %>
+    </div>
+    <script src="/js/theme.js"></script>
+</body>
+</html>

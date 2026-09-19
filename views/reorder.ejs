@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reorder - Vape Menu</title>
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/admin.css">
+    <script>
+        // Apply the saved theme before paint to avoid a flash of the wrong theme
+        if (document.cookie.split('; ').some(function (c) { return c === 'theme=dark'; })) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+</head>
+<body>
+    <%- include('partials/nav', { active: 'reorder' }) %>
+
+    <h1>Reorder List</h1>
+
+    <div class="reorder-controls">
+        <label for="threshold">Reorder when stock is at or below</label>
+        <input type="number" id="threshold" min="0" value="<%= threshold %>" style="width: 80px;">
+        <button type="button" class="btn-primary" onclick="saveThreshold()">Save</button>
+        <span id="threshold-status" class="hint"></span>
+    </div>
+
+    <p class="hint">Juices at or below <strong id="threshold-label"><%= threshold %></strong> in stock. Add stock in the Admin Panel to clear them from this list. Click <strong>Ordered</strong> on a row to mark it as ordered (it greys out and sinks to the bottom); click <strong>Undo</strong> to reverse it.</p>
+
+    <% if (juices.length === 0) { %>
+        <div class="alert alert-success">Nothing to reorder — all juices are above the threshold.</div>
+    <% } else { %>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Brand</th>
+                        <th>Flavor</th>
+                        <th>MG</th>
+                        <th>Stock</th>
+                        <th>Status</th>
+                        <th>Ordered</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% juices.forEach(juice => { %>
+                        <tr class="<%= juice.stock === 0 ? 'row-inactive' : '' %> <%= juice.ordered ? 'row-ordered' : '' %>"
+                            data-id="<%= juice.id %>"
+                            data-ordered="<%= juice.ordered ? 1 : 0 %>"
+                            data-stock="<%= juice.stock %>"
+                            data-brand="<%= juice.brand_name %>"
+                            data-flavor="<%= juice.flavor %>">
+                            <td data-label="Brand"><%= juice.brand_name %></td>
+                            <td data-label="Flavor"><%= juice.flavor %></td>
+                            <td data-label="MG"><%= juice.mg %>mg</td>
+                            <td data-label="Stock"><%= juice.stock %></td>
+                            <td data-label="Status"><%= juice.active ? 'active' : 'disabled' %></td>
+                            <td data-label="Ordered">
+                                <button type="button"
+                                        class="<%= juice.ordered ? 'btn-secondary' : 'btn-success' %> reorder-toggle-btn"
+                                        onclick="toggleOrdered(this)">
+                                    <%= juice.ordered ? 'Undo' : 'Ordered' %>
+                                </button>
+                            </td>
+                        </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
+    <% } %>
+
+    <script>
+        function saveThreshold() {
+            const value = document.getElementById('threshold').value;
+            const status = document.getElementById('threshold-status');
+            fetch('/settings/reorder-threshold', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value })
+            }).then(r => r.json().then(d => ({ ok: r.ok, d })))
+              .then(({ ok, d }) => {
+                  if (ok) {
+                      status.textContent = 'Saved';
+                      document.getElementById('threshold-label').textContent = d.threshold;
+                      setTimeout(() => window.location.reload(), 400);
+                  } else {
+                      status.textContent = d.error || 'Failed to save';
+                  }
+              })
+              .catch(() => { status.textContent = 'Failed to save'; });
+        }
+
+        // Mark a juice as ordered (or undo it). Greys the row out and re-sorts it
+        // to the bottom of the list, matching the server's ordering.
+        function toggleOrdered(btn) {
+            const row = btn.closest('tr');
+            const id = row.dataset.id;
+            btn.disabled = true;
+            fetch('/juice/' + id + '/toggle-ordered', { method: 'POST' })
+                .then(r => r.json().then(d => ({ ok: r.ok, d })))
+                .then(({ ok, d }) => {
+                    if (!ok) {
+                        btn.disabled = false;
+                        alert(d.error || 'Failed to update');
+                        return;
+                    }
+                    const ordered = d.ordered === 1;
+                    row.classList.toggle('row-ordered', ordered);
+                    row.dataset.ordered = ordered ? '1' : '0';
+                    btn.textContent = ordered ? 'Undo' : 'Ordered';
+                    btn.className = ordered ? 'btn-secondary reorder-toggle-btn' : 'btn-success reorder-toggle-btn';
+                    btn.disabled = false;
+                    resortRows();
+                })
+                .catch(() => {
+                    btn.disabled = false;
+                    alert('Failed to update');
+                });
+        }
+
+        // Re-sort the rows in place to mirror the server order:
+        // ordered last, then stock asc, brand asc, flavor asc.
+        function resortRows() {
+            const tbody = document.querySelector('table tbody');
+            if (!tbody) return;
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const ao = parseInt(a.dataset.ordered, 10);
+                const bo = parseInt(b.dataset.ordered, 10);
+                if (ao !== bo) return ao - bo;
+                const as = parseInt(a.dataset.stock, 10);
+                const bs = parseInt(b.dataset.stock, 10);
+                if (as !== bs) return as - bs;
+                const ab = a.dataset.brand.localeCompare(b.dataset.brand);
+                if (ab !== 0) return ab;
+                return a.dataset.flavor.localeCompare(b.dataset.flavor);
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        }
+    </script>
+    <script src="/js/theme.js"></script>
+</body>
+</html>
