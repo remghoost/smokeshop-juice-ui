@@ -1,109 +1,87 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+// Uses Node's built-in `node:sqlite` (available unflagged in Node >= 23.4,
+// stable in Node 24). This avoids the native `sqlite3` package entirely, so
+// there are no prebuilt-binary / glibc / build-toolchain issues on deploy.
+const { DatabaseSync } = require("node:sqlite");
+const path = require("path");
+const fs = require("fs");
 
-const dbPath = path.join(__dirname, 'data', 'menu.db');
-const db = new sqlite3.Database(dbPath);
+const dbPath = path.join(__dirname, "data", "menu.db");
 
-db.serialize(() => {
-    // Brands table (type = 'juice' or 'disposable' — separate brand pools)
-    db.run(`CREATE TABLE IF NOT EXISTS brands (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        type TEXT DEFAULT 'juice'
-    )`);
+// Ensure the data directory exists (the native sqlite3 package created the
+// file but not the parent dir; be explicit so fresh checkouts just work).
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-    // Juices table (type = 'juice' or 'disposable')
-    db.run(`CREATE TABLE IF NOT EXISTS juices (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        brand_id INTEGER NOT NULL,
-        flavor TEXT NOT NULL,
-        mg INTEGER NOT NULL,
-        type TEXT DEFAULT 'juice',
-        active INTEGER DEFAULT 1,
-        stock INTEGER DEFAULT 0,
-        barcode TEXT,
-        ordered INTEGER DEFAULT 0,
-        FOREIGN KEY (brand_id) REFERENCES brands (id)
-    )`);
+const db = new DatabaseSync(dbPath);
 
-    // Sales log table (one row per barcode-scan sale; voided = undone)
-    // sold_at = ISO timestamp (UTC); sold_date = local YYYY-MM-DD for easy daily grouping
-    db.run(`CREATE TABLE IF NOT EXISTS sales (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        juice_id INTEGER NOT NULL,
-        barcode TEXT,
-        sold_at TEXT NOT NULL,
-        sold_date TEXT NOT NULL,
-        voided INTEGER DEFAULT 0,
-        FOREIGN KEY (juice_id) REFERENCES juices (id)
-    )`);
+// Create tables (idempotent). node:sqlite is synchronous, so this all runs
+// inline at module load — no callbacks / serialize() needed.
+db.exec(`
+CREATE TABLE IF NOT EXISTS brands (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    type TEXT DEFAULT 'juice'
+);
 
-    // Settings table (key/value) for tunable options like the reorder threshold
-    db.run(`CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-    )`);
+CREATE TABLE IF NOT EXISTS juices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_id INTEGER NOT NULL,
+    flavor TEXT NOT NULL,
+    mg INTEGER NOT NULL,
+    type TEXT DEFAULT 'juice',
+    active INTEGER DEFAULT 1,
+    stock INTEGER DEFAULT 0,
+    barcode TEXT,
+    ordered INTEGER DEFAULT 0,
+    FOREIGN KEY (brand_id) REFERENCES brands (id)
+);
 
-    // Seed the default reorder threshold (reorder when stock is at or below this)
-    db.run(`INSERT OR IGNORE INTO settings (key, value) VALUES ('reorder_threshold', '2')`);
+CREATE TABLE IF NOT EXISTS sales (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    juice_id INTEGER NOT NULL,
+    barcode TEXT,
+    sold_at TEXT NOT NULL,
+    sold_date TEXT NOT NULL,
+    voided INTEGER DEFAULT 0,
+    FOREIGN KEY (juice_id) REFERENCES juices (id)
+);
 
-    // Seed the fixed nicotine strength for disposables (all disposables share one mg)
-    db.run(`INSERT OR IGNORE INTO settings (key, value) VALUES ('disposable_mg', '50')`);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+`);
 
-    // Migration: add columns to databases created before they existed
-    db.all("PRAGMA table_info(juices)", (err, rows) => {
-        if (!err) {
-            const cols = rows.map((r) => r.name);
-            if (!cols.includes("stock")) {
-                db.run("ALTER TABLE juices ADD COLUMN stock INTEGER DEFAULT 0");
-            }
-            if (!cols.includes("barcode")) {
-                db.run("ALTER TABLE juices ADD COLUMN barcode TEXT");
-            }
-            if (!cols.includes("type")) {
-                db.run("ALTER TABLE juices ADD COLUMN type TEXT DEFAULT 'juice'");
-            }
-            if (!cols.includes("ordered")) {
-                db.run("ALTER TABLE juices ADD COLUMN ordered INTEGER DEFAULT 0");
-            }
-        }
-    });
+// Seed default settings (no-op if they already exist)
+db.exec(`
+INSERT OR IGNORE INTO settings (key, value) VALUES ('reorder_threshold', '2');
+INSERT OR IGNORE INTO settings (key, value) VALUES ('disposable_mg', '50');
+`);
 
-    db.all("PRAGMA table_info(brands)", (err, rows) => {
-        if (!err) {
-            const cols = rows.map((r) => r.name);
-            if (!cols.includes("type")) {
-                db.run("ALTER TABLE brands ADD COLUMN type TEXT DEFAULT 'juice'");
-            }
-        }
-    });
-});
+// Migration: add columns to databases created before they existed
+function ensureColumn(table, column, definition) {
+  const cols = db
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .map((r) => r.name);
+  if (!cols.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+ensureColumn("juices", "stock", "INTEGER DEFAULT 0");
+ensureColumn("juices", "barcode", "TEXT");
+ensureColumn("juices", "type", "TEXT DEFAULT 'juice'");
+ensureColumn("juices", "ordered", "INTEGER DEFAULT 0");
+ensureColumn("brands", "type", "TEXT DEFAULT 'juice'");
 
+// Promise-compatible helpers (server.js `await`s these; awaiting a plain
+// value is a no-op, so the synchronous results pass straight through).
 const dbHelpers = {
-    all: (sql, params = []) => {
-        return new Promise((resolve, reject) => {
-            db.all(sql, params, (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows);
-            });
-        });
-    },
-    get: (sql, params = []) => {
-        return new Promise((resolve, reject) => {
-            db.get(sql, params, (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
-            });
-        });
-    },
-    run: (sql, params = []) => {
-        return new Promise((resolve, reject) => {
-            db.run(sql, params, function(err) {
-                if (err) reject(err);
-                else resolve({ id: this.lastID, changes: this.changes });
-            });
-        });
-    }
+  all: (sql, params = []) => db.prepare(sql).all(...params),
+  get: (sql, params = []) => db.prepare(sql).get(...params),
+  run: (sql, params = []) => {
+    const r = db.prepare(sql).run(...params);
+    return { id: Number(r.lastInsertRowid), changes: Number(r.changes) };
+  },
 };
 
 module.exports = dbHelpers;

@@ -5,7 +5,7 @@ A lightweight internal web tool for managing a **printable vape juice menu** for
 ## Tech Stack
 
 - **Node.js** + **Express** (server-rendered, no frontend framework)
-- **SQLite** (`sqlite3`) — single-file database at `data/menu.db`
+- **SQLite** via Node's built-in `node:sqlite` (no native dependency) — single-file database at `data/menu.db`
 - **EJS** templates for the admin and print pages
 - Plain vanilla JS/CSS for the client
 
@@ -23,7 +23,7 @@ The database file and tables are created automatically on first start.
 | File | Purpose |
 |---|---|
 | `server.js` | Express app and all routes (admin, print, stock, barcode scan, sales log/undo, sales report, reorder). |
-| `db.js` | Promise-wrapped `sqlite3` helpers (`all`/`get`/`run`). Creates tables on startup and runs lightweight column migrations for older databases. |
+| `db.js` | `node:sqlite` helpers (`all`/`get`/`run`). Creates tables on startup and runs lightweight column migrations for older databases. |
 | `data/menu.db` | SQLite database (auto-created). Holds `brands`, `juices`, `sales`, and `settings`. |
 | `views/admin.ejs` | Admin panel page: Juices/Disposables type tabs, add-product form, sortable table with stock + barcode controls, and a right-side "Today's Sales" panel with per-sale Undo. |
 | `views/print.ejs` | Printable juice menu page: active juices grouped by mg → brand → flavors. |
@@ -139,6 +139,8 @@ Keep the README accurate and current — it is the primary reference for anyone 
 ---
 
 ## Change Log
+
+- **2026-09-09** — Replaced the native `sqlite3` package with Node's built-in `node:sqlite` (`DatabaseSync`). The native prebuilt binary was compiled against glibc 2.38 and failed to load on Ubuntu 22.04 (glibc 2.35) with `GLIBC_2.38 not found`. `node:sqlite` is built into Node (unflagged since v23.4, stable in v24), so there's no native binary, no glibc/build-toolchain dependency, and it works on any OS/arch. `db.js` was rewritten around the synchronous `DatabaseSync` API while keeping the same `all`/`get`/`run` helper interface, so `server.js` is unchanged. Removed `sqlite3` from `package.json` (and its transitive deps) from the lockfile.
 
 - **2026-09-08** — Fixed a broken EJS include in `views/partials/nav.ejs`. The partial's doc comment contained a live `<%- include('partials/nav', ...) %>` tag; EJS processes `<% %>` tags even inside HTML comments, so rendering the nav triggered a recursive include of `partials/nav` resolved relative to `views/partials/` (→ `views/partials/partials/nav.ejs`, which doesn't exist), throwing "Could not find the include file". Reworded the comment to describe the include without a live EJS tag. All five nav-including views (admin, print, print-disposables, sales, reorder) now render.
 
