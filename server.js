@@ -625,6 +625,14 @@ app.post("/settings/reorder-threshold", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+// Bind interface. Defaults to all interfaces (0.0.0.0) so it works on the
+// Tailscale interface out of the box. For extra security, set HOST to your
+// Tailscale IP (find it with `tailscale ip -4`, e.g. 100.64.0.x) so the app
+// listens ONLY on the tailnet and is unreachable on the public/LAN interface.
+//   HOST=127.0.0.1  -> local only
+//   HOST=100.64.0.x -> Tailscale only (recommended)
+const HOST = process.env.HOST || "0.0.0.0";
+
+app.listen(PORT, HOST, () => {
+  console.log(`Server running at http://${HOST}:${PORT}`);
 });
