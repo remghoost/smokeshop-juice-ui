@@ -572,6 +572,7 @@ select:focus-visible,
 @media (max-width: 1000px) {
     .main-layout {
         flex-direction: column;
+        align-items: stretch;
     }
     .sales-panel {
         width: 100%;
@@ -582,9 +583,7 @@ select:focus-visible,
 
 /* ============================================================
    Responsive: on phones the tables stay real tables and scroll
-   horizontally inside .table-container. The first two columns
-   (Brand + Flavor) are pinned to the left so you always know
-   which row you're on while swiping through the rest.
+   horizontally inside .table-container.
    ============================================================ */
 @media (max-width: 640px) {
     body {
@@ -600,49 +599,6 @@ select:focus-visible,
     td {
         padding: 10px 8px;
         white-space: nowrap;
-    }
-
-    /* Pin the first two columns (Brand + Flavor) to the left edge.
-       To roll back to Brand-only, drop the :nth-child(2) rules below. */
-    th:nth-child(1),
-    td:nth-child(1) {
-        position: sticky;
-        left: 0;
-        z-index: 1;
-        background-color: var(--surface);
-    }
-
-    /* th:nth-child(2),
-    td:nth-child(2) {
-        position: sticky;
-        left: 110px;
-        z-index: 1;
-        background-color: var(--surface);
-    } */
-
-    /* Header cells sit above body cells and keep the header background */
-    th:nth-child(1),
-    th:nth-child(2) {
-        z-index: 2;
-        background-color: var(--header-bg);
-    }
-
-    /* Dimmed rows: the sticky cells must carry the row's own background
-       so they don't show the surface color underneath */
-    .row-inactive td:nth-child(1),
-    .row-inactive td:nth-child(2) {
-        background-color: var(--surface-alt);
-    }
-
-    .row-ordered td:nth-child(1),
-    .row-ordered td:nth-child(2) {
-        background-color: var(--header-bg);
-    }
-
-    /* Subtle divider between the pinned columns and the scrolling ones */
-    td:nth-child(2),
-    th:nth-child(2) {
-        border-right: 1px solid var(--border);
     }
 
     /* Bigger touch targets on phones */
