@@ -611,13 +611,13 @@ select:focus-visible,
         background-color: var(--surface);
     }
 
-    th:nth-child(2),
+    /* th:nth-child(2),
     td:nth-child(2) {
         position: sticky;
         left: 110px;
         z-index: 1;
         background-color: var(--surface);
-    }
+    } */
 
     /* Header cells sit above body cells and keep the header background */
     th:nth-child(1),
