@@ -51,4 +51,52 @@
 
     // Match the button icon to the theme already applied by the head script
     updateButton();
+
+    // ============================================================
+    // Scan mode (Sell / Input) — persistent button in the top nav.
+    // The mode is persisted in sessionStorage and shared with admin.js
+    // (which handles the actual barcode scanning) via getScanMode().
+    // ============================================================
+    var scanMode = sessionStorage.getItem("scanMode") || "sell"; // 'sell' (default) or 'input'
+
+    function syncScanModeButton() {
+        var btn = document.getElementById("scan-mode-btn");
+        if (!btn) return;
+        if (scanMode === "input") {
+            btn.textContent = "Input Mode";
+            btn.className = "topnav-scan btn-primary";
+        } else {
+            btn.textContent = "Sell Mode";
+            btn.className = "topnav-scan btn-success";
+        }
+    }
+
+    // Expose the current mode so admin.js can branch on it
+    window.getScanMode = function () {
+        return scanMode;
+    };
+
+    window.toggleScanMode = function () {
+        scanMode = scanMode === "sell" ? "input" : "sell";
+        sessionStorage.setItem("scanMode", scanMode);
+        syncScanModeButton();
+        // In Sell Mode the admin page hides the input menu (see admin.css)
+        document.documentElement.classList.toggle("sell-mode", scanMode === "sell");
+        if (typeof window.showScanStatus === "function") {
+            if (scanMode === "input") {
+                window.showScanStatus(
+                    "Input mode: scan to fill the Barcode field, or click Add on a row to assign to that juice",
+                    "info",
+                );
+            } else {
+                window.showScanStatus(
+                    "Sell mode: scanning a barcode sells one unit",
+                    "info",
+                );
+            }
+        }
+    };
+
+    // Restore the mode button on page load (mode persists in sessionStorage)
+    syncScanModeButton();
 })();

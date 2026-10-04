@@ -11,28 +11,34 @@
         if (document.cookie.split('; ').some(function (c) { return c === 'theme=dark'; })) {
             document.documentElement.classList.add('dark');
         }
+        // Apply the saved scan mode before paint so the input menu is hidden in Sell Mode
+        if ((sessionStorage.getItem('scanMode') || 'sell') === 'sell') {
+            document.documentElement.classList.add('sell-mode');
+        }
     </script>
 </head>
 <body>
-    <%- include('partials/nav', { active: 'admin', showScanMode: true }) %>
+    <%- include('partials/nav', { active: 'admin' }) %>
 
     <h1>Menu Management</h1>
 
-    <div class="type-tabs">
-        <a href="/" class="type-tab <%= type === 'juice' ? 'active' : '' %>">Juices</a>
-        <a href="/?type=disposable" class="type-tab <%= type === 'disposable' ? 'active' : '' %>">Disposables</a>
-    </div>
-
     <div id="scan-status" class="scan-status hidden"></div>
 
-    <% if (typeof message !== 'undefined' && message) { %>
-        <div class="alert <%= message.type === 'error' ? 'alert-error' : 'alert-success' %>">
-            <%= message.text %>
+    <div id="input-menu">
+        <div class="type-tabs">
+            <a href="/" class="type-tab <%= type === 'juice' ? 'active' : '' %>">Juices</a>
+            <a href="/?type=disposable" class="type-tab <%= type === 'disposable' ? 'active' : '' %>">Disposables</a>
         </div>
-    <% } %>
+
+        <% if (typeof message !== 'undefined' && message) { %>
+            <div class="alert <%= message.type === 'error' ? 'alert-error' : 'alert-success' %>">
+                <%= message.text %>
+            </div>
+        <% } %>
+    </div>
 
     <div class="main-layout">
-    <div class="main-content">
+    <div class="main-content" id="input-content">
     <div class="form-container">
         <form id="juice-form" action="/add-juice" method="POST" class="form-grid">
             <input type="hidden" name="id" id="juice-id" value="">

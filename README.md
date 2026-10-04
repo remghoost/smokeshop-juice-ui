@@ -25,17 +25,17 @@ The database file and tables are created automatically on first start.
 | `server.js` | Express app and all routes (admin, print, stock, barcode scan, sales log/undo, sales report, reorder). |
 | `db.js` | `node:sqlite` helpers (`all`/`get`/`run`). Creates tables on startup and runs lightweight column migrations for older databases. |
 | `data/menu.db` | SQLite database (auto-created). Holds `brands`, `juices`, `sales`, and `settings`. |
-| `views/admin.ejs` | Admin panel page: Juices/Disposables type tabs, add-product form, sortable table with stock + barcode controls, and a right-side "Today's Sales" panel with per-sale Undo. |
+| `views/admin.ejs` | Admin panel page: Juices/Disposables type tabs, add-product form, sortable table with stock + barcode controls, and a "Today's Sales" panel with per-sale Undo. In Sell Mode the input menu (tabs/form/table) is hidden and only the sales panel is shown (driven by a `sell-mode` class on `<html>`). |
 | `views/print.ejs` | Printable juice menu page: active juices grouped by mg → brand → flavors. |
 | `views/print-disposables.ejs` | Printable disposable menu page: active disposables grouped by brand → flavors (no mg grouping — all disposables share one mg). |
 | `views/sales.ejs` | Sales report page: Daily (per-juice + detailed log), Last 7 Days (top sellers + daily totals), and Lifetime (all-time top sellers) tabs. |
 | `views/reorder.ejs` | Reorder page: juices at/below a configurable threshold, with the threshold editable in the UI and a per-row **Ordered** toggle (greys the row out and sinks it to the bottom). |
-| `public/js/admin.js` | Client logic: table sorting, stock +/-, barcode scanner handling, scan-mode toggle, and the Today's Sales panel (load/prepend/undo). |
-| `public/js/theme.js` | Dark-mode toggle (persists the choice in a `theme` cookie) and the mobile hamburger nav. The theme class itself is applied by a small inline `<head>` script so there's no flash of the wrong theme. |
+| `public/js/admin.js` | Client logic: table sorting, stock +/-, barcode scanner handling (reads the current mode via `getScanMode()`), and the Today's Sales panel (load/prepend/undo). |
+| `public/js/theme.js` | Dark-mode toggle (persists the choice in a `theme` cookie), the mobile hamburger nav, and the persistent Sell/Input scan-mode button (persists the mode in `sessionStorage`, exposes `getScanMode()`/`toggleScanMode()`, and toggles the `sell-mode` class on `<html>`). The theme class itself is applied by a small inline `<head>` script so there's no flash of the wrong theme. |
 | `public/css/base.css` | Shared theme variables (light + `html.dark` palettes), the sticky top navigation, and the theme-toggle button. Loaded on every page before the page-specific stylesheet. |
 | `public/css/admin.css` | Admin panel + report-page styling (stock controls, barcode column, scan toast, sales panel, report tabs). All colors reference the theme variables from `base.css`; includes responsive "card" tables for phones. |
 | `public/css/print.css` | Print-optimized styling (2-column, Times New Roman, `@media print`). Theme-aware on screen, forced white/black when printing. |
-| `views/partials/nav.ejs` | Shared top-nav partial (brand, page links with active highlighting, scan-mode button on the admin page, theme toggle, mobile hamburger). Included by every page. |
+| `views/partials/nav.ejs` | Shared top-nav partial (persistent Sell/Input scan-mode button top-left, page links with active highlighting, theme toggle, mobile hamburger). Included by every page. |
 | `views/index.ejs`, `public/style.css` | Empty/unused legacy files. |
 
 ## Database Schema
@@ -70,6 +70,7 @@ The database file and tables are created automatically on first start.
 ## Functionality
 
 ### Admin Panel (`/`)
+- **Sell / Input mode** — the admin page has two modes, switched by the persistent Sell/Input button in the top nav (see Barcode Scanning). In **Sell Mode** (default) the whole input menu — the type tabs, add-product form, and product table — is hidden and the page shows only the **Today's Sales** panel (full width). In **Input Mode** the full management UI is shown. The mode is persisted in `sessionStorage`; an inline `<head>` script adds a `sell-mode` class to `<html>` before paint (no flash), and `theme.js` keeps it in sync when the button is toggled.
 - **Type tabs** — `Juices` (default) and `Disposables` switch which product list, brand pool, and add-form is shown (`/?type=disposable`). The two pools are fully independent.
 - Add brands (via the `+` button) and products (brand / flavor / mg / optional barcode). For disposables the MG field is hidden (all disposables share a fixed mg, stored in the `disposable_mg` setting, default `50`).
 - Sortable table (Brand, Flavor, MG, Stock columns) — click a header to sort **descending**, click again for **ascending**. Inactive products have no checkbox; they're simply greyed out (see Auto Disable / Re-enable).
@@ -82,10 +83,10 @@ The database file and tables are created automatically on first start.
 ### Barcode Scanning
 USB barcode scanners act as keyboards (they type the code fast and hit Enter), so no drivers or special APIs are needed. The client detects a **burst of fast keystrokes** (≥4 chars, <100ms apart, ending in Enter) and treats it as a scan.
 
-Two modes, toggled by the button in the nav (persisted in `sessionStorage`):
+Two modes, toggled by the **persistent Sell/Input button** in the top nav (top-left, where the old "Vape Menu" brand was; shown on every page, never collapsed behind the hamburger). The mode is persisted in `sessionStorage` and owned by `theme.js`, which exposes `getScanMode()`/`toggleScanMode()`; `admin.js` reads the mode via `getScanMode()` so the two stay in sync.
 
-- **Sell Mode (default)** — scanning a barcode sells one unit: stock decrements, the number updates in place, the sale is logged to the `sales` table and added to the Today's Sales panel, and a toast confirms. Unknown barcodes and disabled juices show an error toast.
-- **Input Mode** — scanning a **new** barcode fills the Barcode field in the add form (then pick brand/flavor/mg and submit). Scanning a barcode that's **already in the system** adds 1 to its stock instead. Clicking `Add` on a row (in the Barcode column) assigns the next scan to that specific juice.
+- **Sell Mode (default)** — scanning a barcode sells one unit: stock decrements, the number updates in place, the sale is logged to the `sales` table and added to the Today's Sales panel, and a toast confirms. Unknown barcodes and disabled juices show an error toast. On the admin page the input menu is hidden so only the Today's Sales panel is shown.
+- **Input Mode** — scanning a **new** barcode fills the Barcode field in the add form (then pick brand/flavor/mg and submit). Scanning a barcode that's **already in the system** adds 1 to its stock instead. Clicking `Add` on a row (in the Barcode column) assigns the next scan to that specific juice. On the admin page the full management UI (type tabs, add form, table) is shown.
 
 ### Auto Disable / Re-enable
 - Selling the **last unit** (or setting stock to 0) sets `active = 0`, dropping the juice from the printed menu. The row dims in place.
@@ -120,7 +121,7 @@ Scan/stock feedback appears as a **fixed-position toast** in the top-right (succ
 
 ### Appearance & Navigation
 - **Dark mode** — a 🌙/☀️ toggle in the top nav switches between a light and a dark theme. The choice is saved in a `theme` cookie (1-year expiry) and applied by a small inline `<head>` script before paint, so there's no flash of the wrong theme on load. All colors are driven by CSS variables in `public/css/base.css` (`:root` for light, `html.dark` for dark), so every page — including the print pages — follows the theme. When actually printing, the print pages force a white background / black text regardless of the saved theme.
-- **Top navigation** — every page shares a sticky top nav (`views/partials/nav.ejs`) with a "Vape Menu" brand link, the page links (Admin / Print Menu / Print Disposables / Sales / Reorder) with the current page highlighted, the Sell/Input scan-mode button (admin page only), and the theme toggle. On narrow screens the links collapse behind a hamburger (☰) button so they never wrap to a second row.
+- **Top navigation** — every page shares a sticky top nav (`views/partials/nav.ejs`) with the persistent **Sell/Input scan-mode button** (top-left, where the old "Vape Menu" brand was), the page links (Admin / Print Menu / Print Disposables / Sales / Reorder) with the current page highlighted, and the theme toggle. The scan-mode button is always visible (it is the primary register control); on narrow screens the page links collapse behind a hamburger (☰) button so they never wrap to a second row.
 - **Mobile-friendly** — on phones (≤640px) the data tables reflow into stacked "cards": each row becomes a card and each cell shows its column name (via a `data-label` attribute), so nothing — including the reorder **Ordered** button — is pushed off-screen. The add-product form stacks to a single column, the Today's Sales panel drops below the table, and buttons get larger (≥44px) touch targets.
 - **No horizontal page scroll** — `html`/`body` have `overflow-x: hidden` (in `base.css`), so the page itself never pans left/right on mobile. Wide content that genuinely needs to scroll (data tables) does so inside its own `.table-container` (`overflow-x: auto`) rather than widening the whole page.
 - **Accessibility** — visible keyboard focus outlines on all interactive elements, ARIA labels on the nav/theme/scan buttons, and `rem`-based sizing so the whole UI scales with the browser's font-size setting (useful for low-vision users). A `prefers-reduced-motion` media query disables animations for users who ask for it.
@@ -140,6 +141,8 @@ Keep the README accurate and current — it is the primary reference for anyone 
 ---
 
 ## Change Log
+
+- **2026-09-11** — Sell Mode now hides the input menu, and the Sell/Input toggle is a persistent top-nav button. In **Sell Mode** (default) the admin page hides the whole input menu (type tabs, add form, product table) and shows only the **Today's Sales** panel at full width; **Input Mode** shows the full management UI. The mode is persisted in `sessionStorage`; an inline `<head>` script in `views/admin.ejs` adds a `sell-mode` class to `<html>` before paint (no flash), and `theme.js` keeps it in sync when the button is toggled. The Sell/Input button moved from the admin-only nav slot to the top-left (where the "Vape Menu" brand was) and is now shown on every page, never collapsed behind the hamburger. The scan-mode state now lives in `theme.js` (exposing `getScanMode()`/`toggleScanMode()`), and `admin.js` reads the mode via `getScanMode()` so the two stay in sync. Removed the now-unused `.topnav-brand` CSS.
 
 - **2026-09-10** — Locked horizontal page scroll on mobile. Added `overflow-x: hidden` to `html`/`body` in `public/css/base.css` so the page itself never pans left/right on phones. Wide content that genuinely needs to scroll (data tables) keeps its own left/right scroll inside `.table-container` (`overflow-x: auto`), and on phones the tables reflow into stacked cards so they don't need it at all.
 

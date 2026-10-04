@@ -471,6 +471,28 @@ th:hover {
     font-style: italic;
 }
 
+/* ---------- Sell Mode: hide the input menu, show only today's sales ----------
+   The scan mode is persisted in sessionStorage; an inline <head> script adds
+   the `sell-mode` class to <html> before paint (no flash), and theme.js keeps
+   it in sync when the persistent nav button is toggled. In Sell Mode the
+   type tabs, add form, and product table are hidden and the sales panel takes
+   the full width. */
+html.sell-mode #input-menu,
+html.sell-mode #input-content,
+html.sell-mode h1 {
+    display: none;
+}
+
+html.sell-mode .main-layout {
+    display: block;
+}
+
+html.sell-mode .sales-panel {
+    width: 100%;
+    position: static;
+    max-height: none;
+}
+
 /* ---------- Report pages (Sales / Reorder) ---------- */
 .report-tabs {
     display: flex;

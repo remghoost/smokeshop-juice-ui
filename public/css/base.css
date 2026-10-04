@@ -136,19 +136,6 @@ body {
     flex-wrap: wrap;
 }
 
-.topnav-brand {
-    font-weight: 700;
-    font-size: 1.05rem;
-    color: var(--text-strong);
-    text-decoration: none;
-    white-space: nowrap;
-    margin-right: 8px;
-}
-
-.topnav-brand:hover {
-    color: var(--primary);
-}
-
 .topnav-links {
     display: flex;
     align-items: center;
@@ -177,15 +164,17 @@ body {
     color: var(--nav-active-color);
 }
 
-/* Scan-mode button lives in the nav on the admin page */
+/* Scan-mode button — persistent, top-left (where the old "Vape Menu" brand
+   was). Always visible, never collapsed behind the hamburger. */
 .topnav-scan {
-    margin-left: 4px;
-    padding: 8px 14px;
+    padding: 8px 16px;
     border-radius: 6px;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     border: none;
     cursor: pointer;
     font-weight: 700;
+    white-space: nowrap;
+    margin-right: 4px;
 }
 
 /* Theme toggle button (far right of the nav) */
@@ -247,20 +236,13 @@ body {
         padding: 12px 14px;
         font-size: 1rem;
     }
-
-    .topnav-scan {
-        margin-left: 0;
-        margin-top: 4px;
-        width: 100%;
-    }
 }
 
 /* Keyboard focus visibility (accessibility) */
 .topnav-link:focus-visible,
 .topnav-theme:focus-visible,
 .topnav-toggle:focus-visible,
-.topnav-scan:focus-visible,
-.topnav-brand:focus-visible {
+.topnav-scan:focus-visible {
     outline: 3px solid var(--primary);
     outline-offset: 2px;
 }

@@ -165,7 +165,8 @@ function updateRowActiveState(id, active) {
 // ===== Barcode scanner handling =====
 // USB scanners act as keyboards: they "type" the code very fast and hit Enter.
 // We detect bursts of fast keystrokes ending in Enter and treat them as scans.
-let scanMode = sessionStorage.getItem('scanMode') || 'sell'; // 'sell' (default) or 'input'
+// The scan mode ('sell' | 'input') is owned by theme.js (persistent nav button);
+// read it via getScanMode() so the two stay in sync.
 let pendingAssignId = null; // juice id waiting for a barcode (row Scan button)
 let scanBuffer = '';
 let lastKeyTime = 0;
@@ -204,7 +205,7 @@ async function handleScan(code) {
         active.value = active.value.slice(0, active.value.length - code.length);
     }
 
-    if (scanMode === 'input') {
+    if (getScanMode() === 'input') {
         if (pendingAssignId) {
             const id = pendingAssignId;
             pendingAssignId = null;
@@ -291,35 +292,8 @@ async function handleScan(code) {
     }
 }
 
-function syncScanModeButton() {
-    const btn = document.getElementById('scan-mode-btn');
-    if (!btn) return;
-    if (scanMode === 'input') {
-        btn.textContent = 'Input Mode';
-        btn.className = 'topnav-scan btn-primary';
-    } else {
-        btn.textContent = 'Sell Mode';
-        btn.className = 'topnav-scan btn-success';
-    }
-}
-
-function toggleScanMode() {
-    scanMode = scanMode === 'sell' ? 'input' : 'sell';
-    sessionStorage.setItem('scanMode', scanMode);
-    syncScanModeButton();
-    if (scanMode === 'input') {
-        showScanStatus('Input mode: scan to fill the Barcode field, or click Scan on a row to assign to that juice', 'info');
-    } else {
-        pendingAssignId = null;
-        showScanStatus('Sell mode: scanning a barcode sells one unit', 'info');
-    }
-}
-
-// Restore the mode button on page load (mode persists in sessionStorage)
-syncScanModeButton();
-
 function startBarcodeAssign(id) {
-    if (scanMode !== 'input') {
+    if (getScanMode() !== 'input') {
         toggleScanMode();
     }
     pendingAssignId = id;
