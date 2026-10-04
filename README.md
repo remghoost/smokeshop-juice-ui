@@ -25,12 +25,12 @@ The database file and tables are created automatically on first start.
 | `server.js` | Express app and all routes (admin, print, stock, barcode scan, sales log/undo, sales report, reorder). |
 | `db.js` | `node:sqlite` helpers (`all`/`get`/`run`). Creates tables on startup and runs lightweight column migrations for older databases. |
 | `data/menu.db` | SQLite database (auto-created). Holds `brands`, `juices`, `sales`, and `settings`. |
-| `views/admin.ejs` | Admin panel page: Juices/Disposables type tabs, add-product form, sortable table with stock + barcode controls, and a "Today's Sales" panel with per-sale Undo. In Sell Mode the input menu (tabs/form/table) is hidden and only the sales panel is shown (driven by a `sell-mode` class on `<html>`). |
+| `views/admin.ejs` | Admin panel page: unified product table (juices + disposables) with an All/Juices/Disposables filter, one adaptive add-product form (type drives the MG field + brand pool), sortable table with stock + barcode controls, and a "Today's Sales" panel with per-sale Undo. In Sell Mode the input menu (filter/form/table) is hidden and only the sales panel is shown (driven by a `sell-mode` class on `<html>`). |
 | `views/print.ejs` | Printable juice menu page: active juices grouped by mg → brand → flavors. |
 | `views/print-disposables.ejs` | Printable disposable menu page: active disposables grouped by brand → flavors (no mg grouping — all disposables share one mg). |
 | `views/sales.ejs` | Sales report page: Daily (per-juice + detailed log), Last 7 Days (top sellers + daily totals), and Lifetime (all-time top sellers) tabs. |
 | `views/reorder.ejs` | Reorder page: juices at/below a configurable threshold, with the threshold editable in the UI and a per-row **Ordered** toggle (greys the row out and sinks it to the bottom). |
-| `public/js/admin.js` | Client logic: table sorting, stock +/-, barcode scanner handling (reads the current mode via `getScanMode()`), and the Today's Sales panel (load/prepend/undo). |
+| `public/js/admin.js` | Client logic: type filter (All/Juices/Disposables), adaptive add form (type → MG field + brand pool), rapid-add form persistence (type/brand/mg remembered in `sessionStorage`), table sorting, stock +/-, barcode scanner handling (reads the current mode via `getScanMode()`), and the Today's Sales panel (load/prepend/undo). |
 | `public/js/theme.js` | Dark-mode toggle (persists the choice in a `theme` cookie), the mobile hamburger nav, and the persistent Sell/Input scan-mode button (persists the mode in `sessionStorage`, exposes `getScanMode()`/`toggleScanMode()`, and toggles the `sell-mode` class on `<html>`). The theme class itself is applied by a small inline `<head>` script so there's no flash of the wrong theme. |
 | `public/css/base.css` | Shared theme variables (light + `html.dark` palettes), the sticky top navigation, and the theme-toggle button. Loaded on every page before the page-specific stylesheet. |
 | `public/css/admin.css` | Admin panel + report-page styling (stock controls, barcode column, scan toast, sales panel, report tabs). All colors reference the theme variables from `base.css`; includes responsive "card" tables for phones. |
@@ -49,7 +49,7 @@ The database file and tables are created automatically on first start.
 
 | Route | Purpose |
 |---|---|
-| `GET /` | Admin panel — `?type=juice` (default) or `?type=disposable`. Brands + products of that type (active first), add-product form, sortable table. |
+| `GET /` | Admin panel — unified table of all products (juices + disposables, active first). `?type=disposable` opens with the Disposables filter pre-selected (default is All). One add-product form; the type selector drives the MG field and brand pool. |
 | `POST /add-brand` | Add a brand (JSON `{ name, type }`); `type` is `'juice'` or `'disposable'` (separate pools). Rejects duplicates. |
 | `POST /add-juice` | Add a juice or disposable (form: brand, flavor, mg, optional barcode, type). For disposables the mg is ignored and the fixed `disposable_mg` setting is used. Duplicate-checked within the same type. New products start **disabled** with stock 0. |
 | `POST /update-juice/:id` | Edit a product's brand / flavor / mg / barcode (same form as add, in edit mode). Duplicate-checked excluding the product itself. Stock and active status are preserved. |
@@ -71,9 +71,10 @@ The database file and tables are created automatically on first start.
 
 ### Admin Panel (`/`)
 - **Sell / Input mode** — the admin page has two modes, switched by the persistent Sell/Input button in the top nav (see Barcode Scanning). In **Sell Mode** (default) the whole input menu — the type tabs, add-product form, and product table — is hidden and the page shows only the **Today's Sales** panel (full width). In **Input Mode** the full management UI is shown. The mode is persisted in `sessionStorage`; an inline `<head>` script adds a `sell-mode` class to `<html>` before paint (no flash), and `theme.js` keeps it in sync when the button is toggled.
-- **Type tabs** — `Juices` (default) and `Disposables` switch which product list, brand pool, and add-form is shown (`/?type=disposable`). The two pools are fully independent.
-- Add brands (via the `+` button) and products (brand / flavor / mg / optional barcode). For disposables the MG field is hidden (all disposables share a fixed mg, stored in the `disposable_mg` setting, default `50`).
-- Sortable table (Brand, Flavor, MG, Stock columns) — click a header to sort **descending**, click again for **ascending**. Inactive products have no checkbox; they're simply greyed out (see Auto Disable / Re-enable).
+- **Type filter** — `All` (default), `Juices`, and `Disposables` filter the unified product table in place (no page reload). The active filter is persisted in `sessionStorage` so it survives the reload after adding a product. `?type=disposable` deep-links to the Disposables filter.
+- Add brands (via the `+` button) and products (type / brand / flavor / mg / optional barcode). The **Type** selector drives the form: for disposables the MG field is hidden (all disposables share a fixed mg, stored in the `disposable_mg` setting, default `50`) and the brand dropdown is filtered to that type's pool.
+- **Rapid-add persistence** — after adding a product, the form's type / brand / mg are remembered in `sessionStorage` and pre-filled on the next load (flavor + barcode clear), so you can add many of the same brand back-to-back.
+- Sortable table (Type, Brand, Flavor, MG, Stock columns) — click a header to sort **descending**, click again for **ascending**. Inactive products have no checkbox; they're simply greyed out (see Auto Disable / Re-enable).
 - **Stock controls** per product: `−` / `+` buttons and an editable number field. Selling one = press `−`.
 - **Barcode column** per product: shows `Yes` if a barcode is set, or an `Add` button to assign one (same behavior as the old `Scan` button).
 - **Responsive layout** — the page is wider and the table scrolls horizontally if needed, so the right-side Today's Sales panel never overlaps the table. On narrower windows the panel stacks below the table instead of sitting beside it.
@@ -141,6 +142,8 @@ Keep the README accurate and current — it is the primary reference for anyone 
 ---
 
 ## Change Log
+
+- **2026-09-12** — Unified the admin panel into a single product table (juices + disposables) with an All/Juices/Disposables filter, replacing the two server-side type tabs that required a full page reload to switch. `getAdminData()` now loads both types; the filter is client-side (`applyFilter()`) and persisted in `sessionStorage`. The add form is now adaptive: a **Type** selector drives the MG field (shown for juices, hidden for disposables) and filters the brand dropdown to that type's pool. Added **rapid-add persistence** — after adding a product, the form's type/brand/mg are remembered in `sessionStorage` and pre-filled on the next load (flavor + barcode clear), so you can add many of the same brand back-to-back. The table gains a **Type** column and `sortTable()` column indices were shifted accordingly. `?type=disposable` now deep-links to the Disposables filter.
 
 - **2026-09-11** — Sell Mode now hides the input menu, and the Sell/Input toggle is a persistent top-nav button. In **Sell Mode** (default) the admin page hides the whole input menu (type tabs, add form, product table) and shows only the **Today's Sales** panel at full width; **Input Mode** shows the full management UI. The mode is persisted in `sessionStorage`; an inline `<head>` script in `views/admin.ejs` adds a `sell-mode` class to `<html>` before paint (no flash), and `theme.js` keeps it in sync when the button is toggled. The Sell/Input button moved from the admin-only nav slot to the top-left (where the "Vape Menu" brand was) and is now shown on every page, never collapsed behind the hamburger. The scan-mode state now lives in `theme.js` (exposing `getScanMode()`/`toggleScanMode()`), and `admin.js` reads the mode via `getScanMode()` so the two stay in sync. Removed the now-unused `.topnav-brand` CSS.
 

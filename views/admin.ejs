@@ -25,9 +25,10 @@
     <div id="scan-status" class="scan-status hidden"></div>
 
     <div id="input-menu">
-        <div class="type-tabs">
-            <a href="/" class="type-tab <%= type === 'juice' ? 'active' : '' %>">Juices</a>
-            <a href="/?type=disposable" class="type-tab <%= type === 'disposable' ? 'active' : '' %>">Disposables</a>
+        <div class="type-tabs" id="type-filter" data-initial="<%= type === 'disposable' ? 'disposable' : 'all' %>">
+            <button type="button" class="type-tab" data-filter="all" onclick="applyFilter('all')">All</button>
+            <button type="button" class="type-tab" data-filter="juice" onclick="applyFilter('juice')">Juices</button>
+            <button type="button" class="type-tab" data-filter="disposable" onclick="applyFilter('disposable')">Disposables</button>
         </div>
 
         <% if (typeof message !== 'undefined' && message) { %>
@@ -42,14 +43,20 @@
     <div class="form-container">
         <form id="juice-form" action="/add-juice" method="POST" class="form-grid">
             <input type="hidden" name="id" id="juice-id" value="">
-            <input type="hidden" name="type" id="product-type" value="<%= type %>">
+            <div class="form-group">
+                <label for="product-type">Type</label>
+                <select name="type" id="product-type" onchange="updateTypeDependentFields()">
+                    <option value="juice">Juice</option>
+                    <option value="disposable">Disposable</option>
+                </select>
+            </div>
             <div class="form-group">
                 <label for="brand">Brand</label>
                 <div style="display: flex; gap: 5px;">
                     <select name="brand_id" id="brand" required>
                         <option value="">-- Select Brand --</option>
                         <% brands.forEach(brand => { %>
-                            <option value="<%= brand.id %>"><%= brand.name %></option>
+                            <option value="<%= brand.id %>" data-type="<%= brand.type %>"><%= brand.name %></option>
                         <% }) %>
                     </select>
                     <button type="button" onclick="addNewBrand()" class="btn-secondary" title="Add New Brand">+</button>
@@ -59,8 +66,7 @@
                 <label for="flavor">Flavor</label>
                 <input type="text" name="flavor" id="flavor" required placeholder="e.g. Peach Pear">
             </div>
-            <% if (type === 'juice') { %>
-            <div class="form-group">
+            <div class="form-group" id="mg-group">
                 <label for="mg">MG Level</label>
                 <select name="mg" id="mg" required>
                     <option value="">-- Select MG --</option>
@@ -72,30 +78,26 @@
                     <option value="50">50</option>
                     <option value="55">55</option>
                 </select>
+                <input type="text" id="mg-fixed" value="50mg (fixed)" disabled class="hidden">
             </div>
-            <% } else { %>
-            <div class="form-group">
-                <label for="mg">MG Level</label>
-                <input type="text" value="50mg (fixed)" disabled>
-            </div>
-            <% } %>
             <div class="form-group">
                 <label for="barcode">Barcode <span class="hint">(optional - scan to fill)</span></label>
                 <input type="text" name="barcode" id="barcode" placeholder="Scan or type barcode">
             </div>
-            <button type="submit" id="juice-submit-btn" class="btn-primary"><%= type === 'disposable' ? 'Add Disposable' : 'Add Juice' %></button>
+            <button type="submit" id="juice-submit-btn" class="btn-primary">Add Juice</button>
             <button type="button" id="juice-cancel-btn" class="btn-secondary hidden" onclick="cancelEdit()">Cancel</button>
         </form>
     </div>
 
     <div class="table-container">
-        <table>
+        <table id="juice-table">
             <thead>
                 <tr>
-                    <th onclick="sortTable(0)">Brand</th>
-                    <th onclick="sortTable(1)">Flavor</th>
-                    <th onclick="sortTable(2)">MG</th>
-                    <th onclick="sortTable(3)">Stock</th>
+                    <th onclick="sortTable(0)">Type</th>
+                    <th onclick="sortTable(1)">Brand</th>
+                    <th onclick="sortTable(2)">Flavor</th>
+                    <th onclick="sortTable(3)">MG</th>
+                    <th onclick="sortTable(4)">Stock</th>
                     <th>Barcode</th>
                     <th>Actions</th>
                 </tr>
@@ -104,10 +106,12 @@
                 <% juices.forEach(juice => { %>
                     <tr class="<%= juice.active ? '' : 'row-inactive' %>"
                         data-id="<%= juice.id %>"
+                        data-type="<%= juice.type %>"
                         data-brand-id="<%= juice.brand_id %>"
                         data-flavor="<%= juice.flavor %>"
                         data-mg="<%= juice.mg %>"
                         data-barcode="<%= juice.barcode || '' %>">
+                        <td data-label="Type"><%= juice.type === 'disposable' ? 'Disposable' : 'Juice' %></td>
                         <td data-label="Brand"><%= juice.brand_name %></td>
                         <td data-label="Flavor"><%= juice.flavor %></td>
                         <td data-label="MG"><%= juice.mg %>mg</td>

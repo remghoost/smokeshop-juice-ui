@@ -24,29 +24,27 @@ async function getSetting(key, fallback) {
   return row ? row.value : fallback;
 }
 
-// Helper to get all brands and juices of a given type for the admin home page
-async function getAdminData(type) {
+// Helper to get all brands and juices (both types) for the admin home page.
+// The unified table shows juices + disposables together; the client filters.
+async function getAdminData() {
   const brands = await db.all(
-    "SELECT * FROM brands WHERE type = ? ORDER BY name ASC",
-    [type],
+    "SELECT * FROM brands ORDER BY type ASC, name ASC"
   );
   const juices = await db.all(
     `SELECT j.*, b.name as brand_name
      FROM juices j
      JOIN brands b ON j.brand_id = b.id
-     WHERE j.type = ?
-     ORDER BY j.active DESC, j.mg ASC, b.name ASC, j.flavor ASC`,
-    [type],
+     ORDER BY j.active DESC, j.type ASC, j.mg ASC, b.name ASC, j.flavor ASC`
   );
   return { brands, juices };
 }
 
-// Admin Panel (type = 'juice' or 'disposable')
+// Admin Panel (unified table; ?type=disposable opens with the Disposables filter)
 app.get("/", async (req, res) => {
   const msgParam = req.query.message;
   const type = req.query.type === "disposable" ? "disposable" : "juice";
   try {
-    const { brands, juices } = await getAdminData(type);
+    const { brands, juices } = await getAdminData();
     let message = null;
     if (msgParam) {
       message = {
