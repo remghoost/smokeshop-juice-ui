@@ -105,6 +105,16 @@ html.dark {
     }
 }
 
+/* ---------- Global: lock horizontal page scroll ----------
+   The page itself never pans left/right (mobile-friendly). Wide
+   content such as data tables scrolls inside its own container
+   (.table-container has overflow-x: auto) instead of pushing the
+   whole page wider than the viewport. */
+html,
+body {
+    overflow-x: hidden;
+}
+
 /* ---------- Top navigation ---------- */
 .topnav {
     position: sticky;

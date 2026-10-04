@@ -122,6 +122,7 @@ Scan/stock feedback appears as a **fixed-position toast** in the top-right (succ
 - **Dark mode** — a 🌙/☀️ toggle in the top nav switches between a light and a dark theme. The choice is saved in a `theme` cookie (1-year expiry) and applied by a small inline `<head>` script before paint, so there's no flash of the wrong theme on load. All colors are driven by CSS variables in `public/css/base.css` (`:root` for light, `html.dark` for dark), so every page — including the print pages — follows the theme. When actually printing, the print pages force a white background / black text regardless of the saved theme.
 - **Top navigation** — every page shares a sticky top nav (`views/partials/nav.ejs`) with a "Vape Menu" brand link, the page links (Admin / Print Menu / Print Disposables / Sales / Reorder) with the current page highlighted, the Sell/Input scan-mode button (admin page only), and the theme toggle. On narrow screens the links collapse behind a hamburger (☰) button so they never wrap to a second row.
 - **Mobile-friendly** — on phones (≤640px) the data tables reflow into stacked "cards": each row becomes a card and each cell shows its column name (via a `data-label` attribute), so nothing — including the reorder **Ordered** button — is pushed off-screen. The add-product form stacks to a single column, the Today's Sales panel drops below the table, and buttons get larger (≥44px) touch targets.
+- **No horizontal page scroll** — `html`/`body` have `overflow-x: hidden` (in `base.css`), so the page itself never pans left/right on mobile. Wide content that genuinely needs to scroll (data tables) does so inside its own `.table-container` (`overflow-x: auto`) rather than widening the whole page.
 - **Accessibility** — visible keyboard focus outlines on all interactive elements, ARIA labels on the nav/theme/scan buttons, and `rem`-based sizing so the whole UI scales with the browser's font-size setting (useful for low-vision users). A `prefers-reduced-motion` media query disables animations for users who ask for it.
 
 ---
@@ -139,6 +140,8 @@ Keep the README accurate and current — it is the primary reference for anyone 
 ---
 
 ## Change Log
+
+- **2026-09-10** — Locked horizontal page scroll on mobile. Added `overflow-x: hidden` to `html`/`body` in `public/css/base.css` so the page itself never pans left/right on phones. Wide content that genuinely needs to scroll (data tables) keeps its own left/right scroll inside `.table-container` (`overflow-x: auto`), and on phones the tables reflow into stacked cards so they don't need it at all.
 
 - **2026-09-09** — Replaced the native `sqlite3` package with Node's built-in `node:sqlite` (`DatabaseSync`). The native prebuilt binary was compiled against glibc 2.38 and failed to load on Ubuntu 22.04 (glibc 2.35) with `GLIBC_2.38 not found`. `node:sqlite` is built into Node (unflagged since v23.4, stable in v24), so there's no native binary, no glibc/build-toolchain dependency, and it works on any OS/arch. `db.js` was rewritten around the synchronous `DatabaseSync` API while keeping the same `all`/`get`/`run` helper interface, so `server.js` is unchanged. Removed `sqlite3` from `package.json` (and its transitive deps) from the lockfile.
 
