@@ -493,6 +493,12 @@ html.sell-mode .sales-panel {
     max-height: none;
 }
 
+/* Input Mode: the Today's Sales panel is only useful in Sell Mode, so hide
+   it and let the product table take the full width. */
+html:not(.sell-mode) .sales-panel {
+    display: none;
+}
+
 /* ---------- Report pages (Sales / Reorder) ---------- */
 .report-tabs {
     display: flex;
@@ -574,81 +580,68 @@ select:focus-visible,
 }
 
 /* ============================================================
-   Responsive: turn tables into stacked "cards" on phones so no
-   column (e.g. the Ordered button) is pushed off-screen.
-   Each cell shows its column name via the data-label attribute.
+   Responsive: on phones the tables stay real tables and scroll
+   horizontally inside .table-container. The first two columns
+   (Brand + Flavor) are pinned to the left so you always know
+   which row you're on while swiping through the rest.
    ============================================================ */
 @media (max-width: 640px) {
     body {
         padding: 12px;
     }
 
-    .table-container {
-        overflow-x: visible;
-        box-shadow: none;
-        background: transparent;
-    }
-
+    /* Keep the table at its natural width so it scrolls, not squishes */
     table {
-        min-width: 0;
+        min-width: 640px;
     }
 
-    table,
-    thead,
-    tbody,
-    tr,
+    th,
     td {
-        display: block;
-        width: 100%;
+        padding: 10px 8px;
+        white-space: nowrap;
     }
 
-    thead {
-        display: none;
+    /* Pin the first two columns (Brand + Flavor) to the left edge.
+       To roll back to Brand-only, drop the :nth-child(2) rules below. */
+    th:nth-child(1),
+    td:nth-child(1) {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background-color: var(--surface);
     }
 
-    tr {
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        margin-bottom: 12px;
-        padding: 4px 12px;
-        background: var(--surface);
-        box-shadow: 0 1px 3px var(--shadow);
+    th:nth-child(2),
+    td:nth-child(2) {
+        position: sticky;
+        left: 110px;
+        z-index: 1;
+        background-color: var(--surface);
     }
 
-    td {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        border-bottom: 1px solid var(--border-light);
-        padding: 10px 0;
-        text-align: right;
+    /* Header cells sit above body cells and keep the header background */
+    th:nth-child(1),
+    th:nth-child(2) {
+        z-index: 2;
+        background-color: var(--header-bg);
     }
 
-    td:last-child {
-        border-bottom: none;
+    /* Dimmed rows: the sticky cells must carry the row's own background
+       so they don't show the surface color underneath */
+    .row-inactive td:nth-child(1),
+    .row-inactive td:nth-child(2) {
+        background-color: var(--surface-alt);
     }
 
-    /* Show the column name as a label on the left of each cell */
-    td::before {
-        content: attr(data-label);
-        font-weight: 600;
-        color: var(--text-muted);
-        text-align: left;
-        flex-shrink: 0;
+    .row-ordered td:nth-child(1),
+    .row-ordered td:nth-child(2) {
+        background-color: var(--header-bg);
     }
 
-    /* Cells that hold buttons: keep the button on the right, full tap area */
-    td[data-label="Actions"],
-    td[data-label="Ordered"],
-    td[data-label="Barcode"] {
-        justify-content: flex-end;
-    }
-
-    td[data-label="Actions"]::before,
-    td[data-label="Ordered"]::before,
-    td[data-label="Barcode"]::before {
-        text-align: left;
+    /* Subtle divider between the pinned columns and the scrolling ones */
+    td:nth-child(2),
+    th:nth-child(2) {
+        border-right: 1px solid var(--border);
     }
 
     /* Bigger touch targets on phones */
@@ -659,14 +652,6 @@ select:focus-visible,
     .barcode-btn {
         min-height: 44px;
         min-width: 44px;
-    }
-
-    .stock-controls {
-        justify-content: flex-end;
-    }
-
-    .action-buttons {
-        justify-content: flex-end;
     }
 
     .form-grid {

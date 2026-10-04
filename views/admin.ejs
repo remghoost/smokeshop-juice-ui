@@ -93,11 +93,10 @@
         <table id="juice-table">
             <thead>
                 <tr>
-                    <th onclick="sortTable(0)">Type</th>
-                    <th onclick="sortTable(1)">Brand</th>
-                    <th onclick="sortTable(2)">Flavor</th>
-                    <th onclick="sortTable(3)">MG</th>
-                    <th onclick="sortTable(4)">Stock</th>
+                    <th onclick="sortTable(0)">Brand</th>
+                    <th onclick="sortTable(1)">Flavor</th>
+                    <th onclick="sortTable(2)">MG</th>
+                    <th onclick="sortTable(3)">Stock</th>
                     <th>Barcode</th>
                     <th>Actions</th>
                 </tr>
@@ -111,11 +110,10 @@
                         data-flavor="<%= juice.flavor %>"
                         data-mg="<%= juice.mg %>"
                         data-barcode="<%= juice.barcode || '' %>">
-                        <td data-label="Type"><%= juice.type === 'disposable' ? 'Disposable' : 'Juice' %></td>
-                        <td data-label="Brand"><%= juice.brand_name %></td>
-                        <td data-label="Flavor"><%= juice.flavor %></td>
-                        <td data-label="MG"><%= juice.mg %>mg</td>
-                        <td data-label="Stock">
+                        <td><%= juice.brand_name %></td>
+                        <td><%= juice.flavor %></td>
+                        <td><%= juice.mg %>mg</td>
+                        <td>
                             <div class="stock-controls">
                                 <button type="button" class="stock-btn" onclick="adjustStock('<%= juice.id %>', -1)" title="Sell one (decrease stock)">−</button>
                                 <input type="number" min="0" class="stock-input" data-id="<%= juice.id %>" value="<%= juice.stock %>"
@@ -123,14 +121,14 @@
                                 <button type="button" class="stock-btn" onclick="adjustStock('<%= juice.id %>', 1)" title="Add one (increase stock)">+</button>
                             </div>
                         </td>
-                        <td data-label="Barcode">
+                        <td>
                             <% if (juice.barcode) { %>
                                 <span class="barcode-yes">Yes</span>
                             <% } else { %>
                                 <button type="button" class="btn-secondary barcode-btn" onclick="startBarcodeAssign('<%= juice.id %>')" title="Scan a barcode to assign it to this juice">Add</button>
                             <% } %>
                         </td>
-                        <td data-label="Actions">
+                        <td>
                             <div class="action-buttons">
                                 <button onclick="toggleJuice('<%= juice.id %>')"
                                         class="<%= juice.active ? 'btn-secondary' : 'btn-success' %>">

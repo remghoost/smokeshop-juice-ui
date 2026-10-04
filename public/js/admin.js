@@ -92,7 +92,7 @@ function restoreForm() {
 }
 
 // ===== Table sorting =====
-// Columns: 0 Type, 1 Brand, 2 Flavor, 3 MG, 4 Stock, 5 Barcode, 6 Actions
+// Columns: 0 Brand, 1 Flavor, 2 MG, 3 Stock, 4 Barcode, 5 Actions
 function sortTable(columnIndex) {
     const table = document.getElementById('juice-table');
     const tbody = table.tBodies[0];
@@ -115,17 +115,17 @@ function sortTable(columnIndex) {
     const sortedRows = rows.sort((a, b) => {
         let aVal, bVal;
 
-        // Numeric sorting for MG column (index 3) - text is like "50mg"
-        if (columnIndex === 3) {
-            aVal = parseInt(a.cells[3].textContent, 10) || 0;
-            bVal = parseInt(b.cells[3].textContent, 10) || 0;
+        // Numeric sorting for MG column (index 2) - text is like "50mg"
+        if (columnIndex === 2) {
+            aVal = parseInt(a.cells[2].textContent, 10) || 0;
+            bVal = parseInt(b.cells[2].textContent, 10) || 0;
         }
-        // Numeric sorting for Stock column (index 4) - value is in the input
-        else if (columnIndex === 4) {
-            aVal = parseInt(a.cells[4].querySelector('input').value, 10) || 0;
-            bVal = parseInt(b.cells[4].querySelector('input').value, 10) || 0;
+        // Numeric sorting for Stock column (index 3) - value is in the input
+        else if (columnIndex === 3) {
+            aVal = parseInt(a.cells[3].querySelector('input').value, 10) || 0;
+            bVal = parseInt(b.cells[3].querySelector('input').value, 10) || 0;
         }
-        // Text sorting for Type (0), Brand (1), Flavor (2)
+        // Text sorting for Brand (0) and Flavor (1)
         else {
             aVal = a.cells[columnIndex].textContent.trim().toLowerCase();
             bVal = b.cells[columnIndex].textContent.trim().toLowerCase();
@@ -256,7 +256,7 @@ function updateRowActiveState(id, active) {
     const input = document.querySelector(`input.stock-input[data-id="${id}"]`);
     if (!input) return;
     const row = input.closest('tr');
-    const btn = row.cells[row.cells.length - 1].querySelector('button');
+    const btn = row.cells[5].querySelector('button');
     row.classList.toggle('row-inactive', !active);
     if (btn) {
         btn.textContent = active ? 'Disable' : 'Enable';
