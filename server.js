@@ -694,7 +694,7 @@ app.post("/settings/reorder-threshold", async (req, res) => {
 // mmproj loaded) and returns structured fields. The device never talks to
 // the llama.cpp server directly — all forwarding happens here, so the LAN
 // IP stays server-side only (the phone reaches us over Tailscale).
-const LLAMA_URL = process.env.LLAMA_URL || "http://192.168.1.122:8080";
+const LLAMA_URL = process.env.LLAMA_URL || "http://100.64.0.191:8080";
 const LLAMA_MODEL = process.env.LLAMA_MODEL || "local-model";
 const LLAMA_TIMEOUT_MS = 60000;
 
