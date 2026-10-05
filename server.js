@@ -695,8 +695,11 @@ app.post("/settings/reorder-threshold", async (req, res) => {
 // the llama.cpp server directly — all forwarding happens here, so the LAN
 // IP stays server-side only (the phone reaches us over Tailscale).
 const LLAMA_URL = process.env.LLAMA_URL || "http://100.64.0.191:8080";
-const LLAMA_MODEL = process.env.LLAMA_MODEL || "local-model";
-const LLAMA_TIMEOUT_MS = 60000;
+const LLAMA_MODEL =
+  process.env.LLAMA_MODEL || "unsloth/Gemma-4-E2B-it-GGUF:Q4_K_M";
+// Configurable so a slower GPU / bigger model can be given more headroom
+// without a code change (e.g. LLAMA_TIMEOUT_MS=120000).
+const LLAMA_TIMEOUT_MS = parseInt(process.env.LLAMA_TIMEOUT_MS, 10) || 60000;
 
 // The fixed mg options in the add form (must match the <select> in admin.ejs)
 const MG_OPTIONS = [0, 3, 6, 25, 35, 50, 55];
@@ -768,11 +771,20 @@ async function extractFromImage(dataUrl, type) {
       }),
     });
     if (!response.ok) {
-      throw new Error(`llama.cpp returned ${response.status}`);
+      // Log the response body — it carries the real reason (e.g. "model
+      // 'local-model' not found", a 400 from a bad request, etc.).
+      const errBody = await response.text().catch(() => "");
+      throw new Error(
+        `llama.cpp returned ${response.status}: ${errBody.slice(0, 500)}`
+      );
     }
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
-    if (!text) throw new Error("Empty response from model");
+    if (!text) {
+      throw new Error(
+        `Empty response from model (raw: ${JSON.stringify(data).slice(0, 500)})`
+      );
+    }
     return parseModelJson(text);
   } finally {
     clearTimeout(timer);

@@ -62,7 +62,7 @@ The database file and tables are created automatically on first start.
 | `POST /toggle-juice/:id` | Flip a juice's `active` flag. |
 | `POST /stock/:id` | Adjust stock: `{ delta: ±n }` or `{ stock: n }`. Auto-disables at 0, re-enables above 0. |
 | `POST /juice/:id/barcode` | Assign/update a barcode for a juice. |
-| `POST /ocr/extract` | Camera OCR: accepts `{ image: <base64 data URL>, type }`, forwards the photo to the local llama.cpp vision server (`LLAMA_URL`, default `http://192.168.1.122:8080`), and returns `{ brand_id, brand_name, brand_raw, flavor, mg }` — mg snapped to the form's fixed options, brand fuzzy-matched against the brand pool for the type. 502 with a friendly message if the model is unreachable or unparseable. |
+| `POST /ocr/extract` | Camera OCR: accepts `{ image: <base64 data URL>, type }`, forwards the photo to the local llama.cpp vision server (`LLAMA_URL`, default `http://100.64.0.191:8080`; `LLAMA_MODEL` default `unsloth/Gemma-4-E2B-it-GGUF:Q4_K_M`; `LLAMA_TIMEOUT_MS` default 60000), and returns `{ brand_id, brand_name, brand_raw, flavor, mg }` — mg snapped to the form's fixed options, brand fuzzy-matched against the brand pool for the type. 502 with a friendly message if the model is unreachable, times out, or returns unparseable JSON. |
 | `POST /scan/lookup` | Look up a barcode without selling (used by Input Mode). |
 | `POST /scan` | Sell one unit of the matching juice (Sell Mode). Auto-disables when stock hits 0. Also logs the sale to the `sales` table and returns the new sale in the response. |
 | `GET /api/sales/today` | Today's sales (newest first) with a running total — feeds the admin panel's right-side "Today's Sales" panel. |
@@ -109,7 +109,7 @@ A **📷 Add via camera** button (in the type-tabs row) opens a two-step camera 
 
 1. **Scan the barcode** — the rear camera opens with a live ZXing decode loop (EAN/UPC/Code 128/39/QR); the first detected code is captured automatically and the modal advances.
 2. **Photograph the box front** — a shutter button snaps the current frame, downscaled client-side to ~1024px JPEG (canvas), and POSTs it to `POST /ocr/extract`.
-3. **Review & add** — the server forwards the photo to the local llama.cpp vision server (`LLAMA_URL`, default `http://192.168.1.122:8080`, OpenAI-compatible `/v1/chat/completions` with the mmproj loaded) and returns `{ brand_id, brand_name, brand_raw, flavor, mg }`. The add form pre-fills itself (barcode from step 1, brand fuzzy-matched against the brand pool for the active tab, flavor, mg snapped to the fixed 0/3/6/25/35/50/55 options). The human reviews and presses Add — nothing is committed automatically.
+3. **Review & add** — the server forwards the photo to the local llama.cpp vision server (`LLAMA_URL`, default `http://100.64.0.191:8080`, OpenAI-compatible `/v1/chat/completions` with the mmproj loaded) and returns `{ brand_id, brand_name, brand_raw, flavor, mg }`. The add form pre-fills itself (barcode from step 1, brand fuzzy-matched against the brand pool for the active tab, flavor, mg snapped to the fixed 0/3/6/25/35/50/55 options). The human reviews and presses Add — nothing is committed automatically.
 
 Design notes:
 
@@ -172,6 +172,8 @@ Keep the README accurate and current — it is the primary reference for anyone 
 ---
 
 ## Change Log
+
+- **2026-10-06** — Improved OCR error diagnostics. The `/ocr/extract` route now logs the llama.cpp response body when it returns a non-200 status (previously only the status code was logged, hiding the real reason such as a model-name mismatch), and logs the raw model output when the response has no `choices[0].message.content`. The per-request timeout is now configurable via `LLAMA_TIMEOUT_MS` (default 60000) so a slower GPU / bigger model can be given more headroom without a code change. Added commented `LLAMA_URL` / `LLAMA_MODEL` / `LLAMA_TIMEOUT_MS` env vars to `smokeshop.service`. Updated the README's stale default llama.cpp IP (was `192.168.1.122`, now `100.64.0.191`).
 
 - **2026-10-05** — Added **camera data entry** (mobile, Input Mode): a 📷 Add via camera button opens a two-step modal — live ZXing barcode scan (auto-capture) then a box-front photo snap (downscaled to ~1024px JPEG client-side). New `POST /ocr/extract` route forwards the photo to a local llama.cpp vision server (`LLAMA_URL` env, default `http://192.168.1.122:8080`, OpenAI-compatible API with mmproj) and returns `{ brand_id, brand_name, brand_raw, flavor, mg }` — mg snapped to the form's fixed options, brand fuzzy-matched against the brand pool for the active tab. The add form pre-fills for a quick human review (nothing auto-commits). New `public/js/camera.js` + modal markup in `views/admin.ejs` + styles in `admin.css`; ZXing UMD bundles self-hosted in `public/vendor/` (new `@zxing/browser` + `@zxing/library` deps). `express.json` limit raised to 10mb for the base64 photo. Camera access requires HTTPS (`tailscale serve`); the modal degrades gracefully with specific errors (permission / no camera / not HTTPS) and a 502 "enter manually" path when the model is unreachable.
 
