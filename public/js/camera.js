@@ -12,6 +12,7 @@ const Camera = {
     video: null,
     stream: null,
     reader: null,
+    scanControls: null, // controls object returned by decodeFromVideoElement (has .stop())
     scanning: false,
     capturedBarcode: null,
     capturedPhoto: null, // data URL
@@ -76,10 +77,11 @@ const Camera = {
     },
 
     stopCamera() {
-        if (this.reader) {
-            this.reader.stop().catch(() => {});
-            this.reader = null;
+        if (this.scanControls) {
+            try { this.scanControls.stop(); } catch (e) {}
+            this.scanControls = null;
         }
+        this.reader = null;
         if (this.stream) {
             this.stream.getTracks().forEach(t => t.stop());
             this.stream = null;
@@ -103,8 +105,10 @@ const Camera = {
     },
 
     // ---------- Step 1: live barcode scan ----------
-    // decodeFromVideo runs until stopped; its callback fires on each decode.
-    startBarcodeScan() {
+    // decodeFromVideoElement runs until stopped; its callback fires on each
+    // decode attempt (result, error, controls). It's async and resolves to the
+    // controls object, which we keep so stopCamera() can halt the loop.
+    async startBarcodeScan() {
         const msg = document.getElementById('cam-error');
         msg.classList.add('hidden');
         if (!window.ZXingBrowser || !window.ZXing) {
@@ -126,14 +130,17 @@ const Camera = {
         ]);
         this.reader = new window.ZXingBrowser.BrowserMultiFormatReader(hints);
         this.scanning = true;
-        this.reader.decodeFromVideo(this.video, (decoded) => {
-            if (decoded && this.scanning) {
-                this.scanning = false;
-                this.onBarcode(decoded.getText());
-            }
-        }).catch(() => {
-            // stream ended (modal closed) — nothing to do
-        });
+        try {
+            this.scanControls = await this.reader.decodeFromVideoElement(this.video, (decoded) => {
+                if (decoded && this.scanning) {
+                    this.scanning = false;
+                    this.onBarcode(decoded.getText());
+                }
+            });
+        } catch (err) {
+            // video failed to play / decode setup failed
+            this.showCameraError(err);
+        }
     },
 
     onBarcode(code) {
