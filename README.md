@@ -26,6 +26,7 @@ The database file and tables are created automatically on first start.
 | `db.js` | `node:sqlite` helpers (`all`/`get`/`run`). Creates tables on startup and runs lightweight column migrations for older databases. |
 | `data/menu.db` | SQLite database (auto-created). Holds `brands`, `juices`, `sales`, and `settings`. |
 | `views/admin.ejs` | Admin panel page: unified product table (juices + disposables) with a Disposables/Juices filter (Disposables on the left, Juices on the right), one adaptive add-product form (the active tab drives the type, MG field, and brand pool), sortable table with stock + barcode controls, and a "Today's Sales" panel with per-sale Undo (Sell Mode only). In Sell Mode the input menu (filter/form/table) is hidden and only the sales panel is shown (driven by a `sell-mode` class on `<html>`). |
+| `views/brands.ejs` | Brands page: lists every brand (name, type, product count) with an inline **Rename** (fixes typos, no data loss) and a **Delete** button that is only enabled when the brand has 0 products. |
 | `views/print.ejs` | Printable juice menu page: active juices grouped by mg → brand → flavors. |
 | `views/print-disposables.ejs` | Printable disposable menu page: active disposables grouped by brand → flavors (no mg grouping — all disposables share one mg). |
 | `views/sales.ejs` | Sales report page: Daily (per-juice + detailed log), Last 7 Days (top sellers + daily totals), and Lifetime (all-time top sellers) tabs. |
@@ -51,6 +52,9 @@ The database file and tables are created automatically on first start.
 |---|---|
 | `GET /` | Admin panel — unified table of all products (juices + disposables, active first). `?type=disposable` opens with the Disposables filter pre-selected (default is Juices). One add-product form; the active tab (Disposables/Juices) drives the type, MG field, and brand pool. |
 | `POST /add-brand` | Add a brand (JSON `{ name, type }`); `type` is `'juice'` or `'disposable'` (separate pools). Rejects duplicates. |
+| `GET /brands` | Brands page — every brand with its type and product count. |
+| `POST /brands/:id/rename` | Rename a brand (JSON `{ name }`). Rejects duplicates. |
+| `POST /brands/:id/delete` | Delete a brand. Only allowed when it has 0 products (otherwise 400). |
 | `POST /add-juice` | Add a juice or disposable (form: brand, flavor, mg, optional barcode, type). For disposables the mg is ignored and the fixed `disposable_mg` setting is used. Duplicate-checked within the same type. New products start **disabled** with stock 0. |
 | `POST /update-juice/:id` | Edit a product's brand / flavor / mg / barcode (same form as add, in edit mode). Duplicate-checked excluding the product itself. Stock and active status are preserved. |
 | `POST /toggle-juice/:id` | Flip a juice's `active` flag. |
@@ -80,6 +84,14 @@ The database file and tables are created automatically on first start.
 - **Responsive layout** — the page is wider and the table scrolls horizontally if needed. On narrower windows the Today's Sales panel stacks below the table instead of sitting beside it.
 - **Edit** per product: reuses the top add-form in "edit" mode — the form pre-fills with the row's brand / flavor / mg / barcode, the submit button becomes `Update`, and a `Cancel` button appears. Submitting posts to `POST /update-juice/:id`; stock and active status are unchanged.
 - **Today's Sales panel** (right side, **Sell Mode only**): a running tally of today's barcode-scan sales, newest first, each with an **Undo** button. New sales appear instantly as they're scanned; Undo restores the stock and voids the entry. A link jumps to the full Sales report. In Input Mode the panel is hidden so the product table takes the full width.
+
+### Brands
+
+A dedicated page (`/brands`, linked in the top nav) for managing the brand list — the place to fix a typo or remove a brand that's no longer used.
+
+- **List** — every brand with its type (Juice / Disposable) and product count.
+- **Rename** — inline edit of the brand name (turns the name into an input + Save/Cancel). Fixes typos with no data loss. Posts to `POST /brands/:id/rename`; duplicate names are rejected.
+- **Delete** — removes a brand. The button is **disabled** (with a hint) when the brand has any products, so you can't orphan products. Delete posts to `POST /brands/:id/delete`, which returns 400 if the brand still has products.
 
 ### Barcode Scanning
 USB barcode scanners act as keyboards (they type the code fast and hit Enter), so no drivers or special APIs are needed. The client detects a **burst of fast keystrokes** (≥4 chars, <100ms apart, ending in Enter) and treats it as a scan.
@@ -122,7 +134,7 @@ Scan/stock feedback appears as a **fixed-position toast** in the top-right (succ
 
 ### Appearance & Navigation
 - **Dark mode** — a 🌙/☀️ toggle in the top nav switches between a light and a dark theme. The choice is saved in a `theme` cookie (1-year expiry) and applied by a small inline `<head>` script before paint, so there's no flash of the wrong theme on load. All colors are driven by CSS variables in `public/css/base.css` (`:root` for light, `html.dark` for dark), so every page — including the print pages — follows the theme. When actually printing, the print pages force a white background / black text regardless of the saved theme.
-- **Top navigation** — every page shares a sticky top nav (`views/partials/nav.ejs`) with the persistent **Sell/Input scan-mode button** (top-left, where the old "Vape Menu" brand was), the page links (Admin / Print Menu / Print Disposables / Sales / Reorder) with the current page highlighted, and the theme toggle. The scan-mode button is always visible (it is the primary register control); on narrow screens the page links collapse behind a hamburger (☰) button so they never wrap to a second row.
+- **Top navigation** — every page shares a sticky top nav (`views/partials/nav.ejs`) with the persistent **Sell/Input scan-mode button** (top-left, where the old "Vape Menu" brand was), the page links (Admin / Brands / Print Menu / Print Disposables / Sales / Reorder) with the current page highlighted, and the theme toggle. The scan-mode button is always visible (it is the primary register control); on narrow screens the page links collapse behind a hamburger (☰) button so they never wrap to a second row.
 - **Mobile-friendly** — on phones (≤640px) the data tables stay real tables and scroll horizontally inside their `.table-container` (the table keeps its natural width, so you swipe left/right to reach the Stock/Barcode/Actions columns). The add-product form stacks to a single column and buttons get larger (≥44px) touch targets.
 - **No horizontal page scroll** — `html`/`body` have `overflow-x: hidden` (in `base.css`), so the page itself never pans left/right on mobile. Wide content that genuinely needs to scroll (data tables) does so inside its own `.table-container` (`overflow-x: auto`) rather than widening the whole page.
 - **Accessibility** — visible keyboard focus outlines on all interactive elements, ARIA labels on the nav/theme/scan buttons, and `rem`-based sizing so the whole UI scales with the browser's font-size setting (useful for low-vision users). A `prefers-reduced-motion` media query disables animations for users who ask for it.
@@ -142,6 +154,8 @@ Keep the README accurate and current — it is the primary reference for anyone 
 ---
 
 ## Change Log
+
+- **2026-09-15** — Added a **Brands** page (`/brands`, linked in the top nav) for managing the brand list. New `views/brands.ejs` lists every brand with its type and product count, with an inline **Rename** (fixes typos, no data loss) and a **Delete** button that is only enabled when the brand has 0 products (so you can't orphan products). New routes: `GET /brands`, `POST /brands/:id/rename` (rejects duplicates), and `POST /brands/:id/delete` (returns 400 if the brand still has products). Added a `.brand-rename-input` style to `admin.css`.
 
 - **2026-09-14** — Simplified the admin panel's type controls. Removed the **All** tab from the Disposables/Juices filter (now just the two tabs, with **Disposables** on the left and **Juices** on the right, defaulting to Juices). Removed the separate **Type** selector from the add form — the form's type now follows whichever tab is active (a hidden `type` input is set by `applyFilter()`), so the MG field and brand pool track the selected tab. `applyFilter()` now also drives the form's type, a new `getCurrentFilter()` helper reads the active tab, `initFilter()` defaults to `juice` (and ignores a legacy `all` value), `restoreForm()` only restores brand/mg when they match the current tab, and `startEdit()`/`cancelEdit()` switch the tab to match the product. `?type=disposable` still deep-links to the Disposables tab.
 

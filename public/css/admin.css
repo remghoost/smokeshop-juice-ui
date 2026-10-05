@@ -306,6 +306,12 @@ th:hover {
     border: 1px solid var(--scan-info-border);
 }
 
+/* ---------- Brands page: inline rename ---------- */
+.brand-rename-input {
+    width: 180px;
+    max-width: 100%;
+}
+
 /* ---------- Barcode ---------- */
 .barcode-yes {
     color: var(--success);

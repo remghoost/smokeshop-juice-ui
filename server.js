@@ -84,6 +84,67 @@ app.post("/add-brand", async (req, res) => {
   }
 });
 
+// Brands page: list all brands with their product counts
+app.get("/brands", async (req, res) => {
+  try {
+    const brands = await db.all(
+      `SELECT b.id, b.name, b.type, COUNT(j.id) as product_count
+       FROM brands b
+       LEFT JOIN juices j ON j.brand_id = b.id
+       GROUP BY b.id
+       ORDER BY b.type ASC, b.name ASC`
+    );
+    res.render("brands", { brands });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Rename a brand (fixes typos; no data loss)
+app.post("/brands/:id/rename", async (req, res) => {
+  const id = req.params.id;
+  const { name } = req.body || {};
+  if (!name || name.trim() === "") {
+    return res.status(400).json({ error: "Brand name is required" });
+  }
+  try {
+    const brand = await db.get("SELECT id FROM brands WHERE id = ?", [id]);
+    if (!brand) return res.status(404).json({ error: "Brand not found" });
+    await db.run("UPDATE brands SET name = ? WHERE id = ?", [name.trim(), id]);
+    res.status(200).json({ name: name.trim() });
+  } catch (err) {
+    if (err.message.includes("UNIQUE constraint failed")) {
+      res.status(400).json({ error: "Brand already exists" });
+    } else {
+      res.status(500).json({ error: "Database error" });
+    }
+  }
+});
+
+// Delete a brand (only allowed when it has no products)
+app.post("/brands/:id/delete", async (req, res) => {
+  const id = req.params.id;
+  try {
+    const brand = await db.get("SELECT id, name FROM brands WHERE id = ?", [id]);
+    if (!brand) return res.status(404).json({ error: "Brand not found" });
+    const count = await db.get(
+      "SELECT COUNT(*) as c FROM juices WHERE brand_id = ?",
+      [id],
+    );
+    if (count.c > 0) {
+      return res.status(400).json({
+        error: `Brand has ${count.c} product${count.c === 1 ? "" : "s"}. Delete them in the Admin Panel first.`,
+      });
+    }
+    await db.run("DELETE FROM brands WHERE id = ?", [id]);
+    res.status(200).json({ deleted: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // Resolve the mg for a product: disposables use a fixed setting, juices use the form value
 async function resolveMg(productType, formMg) {
   if (productType === "disposable") {

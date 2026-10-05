@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brands - Vape Menu</title>
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/admin.css">
+    <script>
+        // Apply the saved theme before paint to avoid a flash of the wrong theme
+        if (document.cookie.split('; ').some(function (c) { return c === 'theme=dark'; })) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+</head>
+<body>
+    <%- include('partials/nav', { active: 'brands' }) %>
+
+    <h1>Brands</h1>
+
+    <p class="hint">Rename a brand to fix a typo, or delete a brand that has no products. A brand with products can't be deleted — remove its products in the <a href="/">Admin Panel</a> first.</p>
+
+    <div class="table-container">
+        <table id="brands-table">
+            <thead>
+                <tr>
+                    <th>Brand</th>
+                    <th>Type</th>
+                    <th>Products</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% brands.forEach(brand => { %>
+                    <tr data-id="<%= brand.id %>" data-name="<%= brand.name %>" data-count="<%= brand.product_count %>">
+                        <td class="brand-name-cell"><%= brand.name %></td>
+                        <td><%= brand.type === 'disposable' ? 'Disposable' : 'Juice' %></td>
+                        <td><%= brand.product_count %></td>
+                        <td>
+                            <div class="action-buttons">
+                                <button type="button" class="btn-secondary" onclick="startRename(this)">Rename</button>
+                                <button type="button" class="btn-danger brand-delete-btn"
+                                        <%= brand.product_count > 0 ? 'disabled' : '' %>
+                                        title="<%= brand.product_count > 0 ? 'Delete its ' + brand.product_count + ' product(s) in the Admin Panel first' : 'Delete this brand' %>"
+                                        onclick="deleteBrand(this)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                <% }) %>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Inline rename: swap the name cell for an input + Save/Cancel
+        function startRename(btn) {
+            const row = btn.closest('tr');
+            if (row.querySelector('.brand-rename-input')) return; // already editing
+            const cell = row.querySelector('.brand-name-cell');
+            const current = row.dataset.name;
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'brand-rename-input';
+            input.value = current;
+            const saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.className = 'btn-primary brand-rename-save';
+            saveBtn.textContent = 'Save';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'btn-secondary brand-rename-cancel';
+            cancelBtn.textContent = 'Cancel';
+            cell.textContent = '';
+            cell.append(input, saveBtn, cancelBtn);
+
+            input.focus();
+            input.select();
+
+            saveBtn.onclick = () => saveRename(row, input.value);
+            cancelBtn.onclick = () => cancelRename(row, current);
+            input.onkeydown = (e) => {
+                if (e.key === 'Enter') saveRename(row, input.value);
+                if (e.key === 'Escape') cancelRename(row, current);
+            };
+        }
+
+        function cancelRename(row, current) {
+            row.querySelector('.brand-name-cell').textContent = current;
+        }
+
+        async function saveRename(row, name) {
+            name = name.trim();
+            if (!name) {
+                alert('Brand name is required');
+                return;
+            }
+            const id = row.dataset.id;
+            const response = await fetch('/brands/' + id + '/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                alert('Error: ' + (data.error || 'Failed to rename'));
+                return;
+            }
+            row.dataset.name = data.name;
+            row.querySelector('.brand-name-cell').textContent = data.name;
+        }
+
+        async function deleteBrand(btn) {
+            const row = btn.closest('tr');
+            const name = row.dataset.name;
+            if (!confirm('Delete brand "' + name + '"? This cannot be undone.')) return;
+            const id = row.dataset.id;
+            const response = await fetch('/brands/' + id + '/delete', { method: 'POST' });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                alert('Error: ' + (data.error || 'Failed to delete'));
+                return;
+            }
+            row.remove();
+        }
+    </script>
+    <script src="/js/theme.js"></script>
+</body>
+</html>

@@ -1,7 +1,8 @@
 <!--
     Shared top navigation. Include it from a page with an EJS include of
-    'partials/nav', passing { active: 'admin' } (or 'print' | 'disposables'
-    | 'sales' | 'reorder'). Omit `active` on pages that shouldn't highlight
+    'partials/nav', passing { active: 'admin' } (or 'brands' | 'print' |
+    'disposables' | 'sales' | 'reorder'). Omit `active` on pages that
+    shouldn't highlight
     anything. The Sell/Input scan-mode button is persistent (top-left, where
     the old "Vape Menu" brand was) and is shown on every page; its state is
     persisted in sessionStorage and handled by theme.js.
@@ -17,6 +18,7 @@
                 aria-controls="nav-links" onclick="toggleNavMenu()">☰</button>
         <div class="topnav-links" id="nav-links">
             <a href="/" class="topnav-link <%= active === 'admin' ? 'active' : '' %>">Admin</a>
+            <a href="/brands" class="topnav-link <%= active === 'brands' ? 'active' : '' %>">Brands</a>
             <a href="/print" class="topnav-link <%= active === 'print' ? 'active' : '' %>">Print Menu</a>
             <a href="/print/disposables" class="topnav-link <%= active === 'disposables' ? 'active' : '' %>">Print Disposables</a>
             <a href="/sales" class="topnav-link <%= active === 'sales' ? 'active' : '' %>">Sales</a>
