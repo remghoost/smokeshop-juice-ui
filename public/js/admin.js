@@ -5,20 +5,33 @@
 function applyFilter(filter) {
     const rows = document.querySelectorAll('#juice-table tbody tr');
     rows.forEach(row => {
-        const show = filter === 'all' || row.dataset.type === filter;
+        const show = row.dataset.type === filter;
         row.style.display = show ? '' : 'none';
     });
     document.querySelectorAll('#type-filter .type-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.filter === filter);
     });
     try { sessionStorage.setItem('adminFilter', filter); } catch (e) {}
+    // The form's type follows the active tab (drives the MG field + brand pool)
+    const typeSel = document.getElementById('product-type');
+    if (typeSel) {
+        typeSel.value = filter;
+        updateTypeDependentFields();
+    }
+}
+
+// The currently active tab (the form's type follows this)
+function getCurrentFilter() {
+    const active = document.querySelector('#type-filter .type-tab.active');
+    return active ? active.dataset.filter : 'juice';
 }
 
 function initFilter() {
     const container = document.getElementById('type-filter');
-    const initial = container ? container.dataset.initial : 'all';
+    const initial = container ? container.dataset.initial : 'juice';
     let saved = null;
     try { saved = sessionStorage.getItem('adminFilter'); } catch (e) {}
+    if (saved === 'all') saved = null; // legacy value; fall back to the default tab
     applyFilter(saved || initial);
 }
 
@@ -62,7 +75,7 @@ function updateTypeDependentFields() {
 function saveFormForNextAdd() {
     const id = document.getElementById('juice-id').value;
     if (id) return; // edit mode - don't persist
-    const type = document.getElementById('product-type').value;
+    const type = getCurrentFilter();
     const brandId = document.getElementById('brand').value;
     const mg = document.getElementById('mg').value;
     try {
@@ -73,21 +86,19 @@ function saveFormForNextAdd() {
 function restoreForm() {
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem('adminForm') || 'null'); } catch (e) {}
+    if (!saved) return;
 
-    const typeSel = document.getElementById('product-type');
-    if (saved && saved.type) typeSel.value = saved.type;
-    updateTypeDependentFields();
-
-    if (saved) {
-        const brandSel = document.getElementById('brand');
-        if (saved.brand_id) {
-            const opt = brandSel.querySelector(`option[value="${saved.brand_id}"]`);
-            if (opt && !opt.hidden) brandSel.value = saved.brand_id;
-        }
-        if (saved.type === 'juice' && saved.mg) {
-            const mgSel = document.getElementById('mg');
-            if (mgSel.querySelector(`option[value="${saved.mg}"]`)) mgSel.value = saved.mg;
-        }
+    // The type is driven by the active tab (set by initFilter); only restore
+    // brand/mg when they match the current tab.
+    const type = getCurrentFilter();
+    const brandSel = document.getElementById('brand');
+    if (saved.brand_id && saved.type === type) {
+        const opt = brandSel.querySelector(`option[value="${saved.brand_id}"]`);
+        if (opt && !opt.hidden) brandSel.value = saved.brand_id;
+    }
+    if (type === 'juice' && saved.mg) {
+        const mgSel = document.getElementById('mg');
+        if (mgSel.querySelector(`option[value="${saved.mg}"]`)) mgSel.value = saved.mg;
     }
 }
 
@@ -168,10 +179,8 @@ function startEdit(id) {
     form.action = `/update-juice/${id}`;
     document.getElementById('juice-id').value = id;
 
-    // Set the type first so the MG field + brand pool match the product
-    const typeSel = document.getElementById('product-type');
-    typeSel.value = row.dataset.type;
-    updateTypeDependentFields();
+    // Switch to the product's type tab so the MG field + brand pool match
+    applyFilter(row.dataset.type);
 
     document.getElementById('brand').value = row.dataset.brandId;
     document.getElementById('flavor').value = row.dataset.flavor;
@@ -192,9 +201,12 @@ function cancelEdit() {
     form.action = '/add-juice';
     form.reset();
     document.getElementById('juice-id').value = '';
-    document.getElementById('product-type').value = 'juice';
+    // Reset the form's type to the current tab
+    const typeSel = document.getElementById('product-type');
+    typeSel.value = getCurrentFilter();
     updateTypeDependentFields();
-    document.getElementById('juice-submit-btn').textContent = 'Add Juice';
+    document.getElementById('juice-submit-btn').textContent =
+        getCurrentFilter() === 'disposable' ? 'Add Disposable' : 'Add Juice';
     document.getElementById('juice-cancel-btn').classList.add('hidden');
 }
 
@@ -494,6 +506,6 @@ async function undoSale(id) {
 // ===== Init =====
 // Remember the form on submit (add mode) so rapid adds keep type/brand/mg.
 document.getElementById('juice-form').addEventListener('submit', saveFormForNextAdd);
-restoreForm();
 initFilter();
+restoreForm();
 loadTodaySales();

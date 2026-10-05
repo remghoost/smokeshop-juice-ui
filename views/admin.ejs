@@ -25,10 +25,9 @@
     <div id="scan-status" class="scan-status hidden"></div>
 
     <div id="input-menu">
-        <div class="type-tabs" id="type-filter" data-initial="<%= type === 'disposable' ? 'disposable' : 'all' %>">
-            <button type="button" class="type-tab" data-filter="all" onclick="applyFilter('all')">All</button>
-            <button type="button" class="type-tab" data-filter="juice" onclick="applyFilter('juice')">Juices</button>
+        <div class="type-tabs" id="type-filter" data-initial="<%= type === 'disposable' ? 'disposable' : 'juice' %>">
             <button type="button" class="type-tab" data-filter="disposable" onclick="applyFilter('disposable')">Disposables</button>
+            <button type="button" class="type-tab" data-filter="juice" onclick="applyFilter('juice')">Juices</button>
         </div>
 
         <% if (typeof message !== 'undefined' && message) { %>
@@ -43,13 +42,7 @@
     <div class="form-container">
         <form id="juice-form" action="/add-juice" method="POST" class="form-grid">
             <input type="hidden" name="id" id="juice-id" value="">
-            <div class="form-group">
-                <label for="product-type">Type</label>
-                <select name="type" id="product-type" onchange="updateTypeDependentFields()">
-                    <option value="juice">Juice</option>
-                    <option value="disposable">Disposable</option>
-                </select>
-            </div>
+            <input type="hidden" name="type" id="product-type" value="juice">
             <div class="form-group">
                 <label for="brand">Brand</label>
                 <div style="display: flex; gap: 5px;">
