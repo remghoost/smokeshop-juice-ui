@@ -112,7 +112,9 @@ const Camera = {
             msg.classList.remove('hidden');
             return;
         }
-        const hints = new window.ZXing.DecodeHintType();
+        // DecodeHintType is an enum object (not a class) in the UMD build, so
+        // the hints must be a plain Map keyed by the enum values.
+        const hints = new Map();
         hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [
             window.ZXing.BarcodeFormat.EAN_13,
             window.ZXing.BarcodeFormat.EAN_8,
