@@ -115,7 +115,8 @@ function sortTable(columnIndex) {
     header.dataset.sortDir = isDescending ? 'desc' : 'asc';
 
     // Update all headers to remove active sort indicators
-    table.tHead.rows[0].cells.forEach(cell => {
+    // (Array.from: HTMLCollection has no forEach in Firefox)
+    Array.from(table.tHead.rows[0].cells).forEach(cell => {
         cell.classList.remove('sort-asc', 'sort-desc');
     });
 
