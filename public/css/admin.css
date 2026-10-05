@@ -629,3 +629,180 @@ select:focus-visible,
         max-width: none;
     }
 }
+
+/* ============================================================
+   Camera data-entry modal (mobile, Input Mode)
+   ============================================================ */
+.camera-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+}
+
+.camera-modal.hidden {
+    display: none;
+}
+
+.camera-modal-box {
+    position: relative;
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    width: 100%;
+    max-width: 480px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.camera-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--tab-bg);
+    color: var(--text);
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+    z-index: 1;
+}
+
+.cam-step h2 {
+    font-size: 1.1rem;
+    color: var(--text-strong);
+    margin: 0 0 6px;
+}
+
+.cam-hint {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin: 0 0 10px;
+}
+
+.cam-viewfinder {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 4 / 3;
+    margin-bottom: 12px;
+}
+
+.cam-viewfinder video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Animated scan line (scan step only) */
+.cam-scanline {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 10%;
+    height: 3px;
+    background: var(--primary);
+    box-shadow: 0 0 12px var(--primary);
+    border-radius: 2px;
+    animation: cam-scan 2s ease-in-out infinite alternate;
+}
+
+@keyframes cam-scan {
+    from { top: 12%; }
+    to { top: 88%; }
+}
+
+.cam-shutter-row {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.cam-shutter {
+    min-height: 52px;
+    padding: 12px 28px;
+    font-size: 1.05rem;
+}
+
+.cam-photo-preview {
+    width: 100%;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    background: var(--header-bg);
+    min-height: 80px;
+}
+
+.cam-busy {
+    text-align: center;
+    font-weight: bold;
+    color: var(--text-muted);
+    padding: 10px 0;
+}
+
+.cam-ocr-result {
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+
+.cam-ocr-result.ok {
+    background: var(--alert-success-bg);
+    color: var(--alert-success-text);
+    border: 1px solid var(--alert-success-border);
+}
+
+.cam-ocr-result.fail {
+    background: var(--alert-error-bg);
+    color: var(--alert-error-text);
+    border: 1px solid var(--alert-error-border);
+}
+
+.cam-error {
+    background: var(--alert-error-bg);
+    color: var(--alert-error-text);
+    border: 1px solid var(--alert-error-border);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 0.9rem;
+    margin-top: 10px;
+}
+
+/* "Add via camera" tab button (sits in the type-tabs row) */
+.type-tab.cam-btn {
+    margin-left: auto;
+    background: var(--success);
+    color: white;
+}
+
+.type-tab.cam-btn:hover {
+    background: var(--success-hover);
+}
+
+/* Brand hint shown when the OCR'd brand didn't match an existing brand */
+.cam-brand-hint {
+    margin-top: 6px;
+    font-size: 0.82rem;
+    font-weight: bold;
+    color: var(--scan-warn-text);
+    background: var(--scan-warn-bg);
+    border: 1px solid var(--scan-warn-border);
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
+/* Lock page scroll while the modal is open */
+body.modal-open {
+    overflow: hidden;
+}

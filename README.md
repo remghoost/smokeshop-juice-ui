@@ -23,7 +23,7 @@ The database file and tables are created automatically on first start.
 | File | Purpose |
 |---|---|
 | `server.js` | Express app and all routes (admin, print, stock, barcode scan, sales log/undo, sales report, reorder). |
-| `db.js` | `node:sqlite` helpers (`all`/`get`/`run`). Creates tables on startup and runs lightweight column migrations for older databases. |
+| `db.js` | `node:sqlite` helpers (`all`/`get`/`run`). Creates tables on startup and runs lightweight column migrationsfor older databases. |
 | `data/menu.db` | SQLite database (auto-created). Holds `brands`, `juices`, `sales`, and `settings`. |
 | `views/admin.ejs` | Admin panel page: unified product table (juices + disposables) with a Disposables/Juices filter (Disposables on the left, Juices on the right), one adaptive add-product form (the active tab drives the type, MG field, and brand pool), sortable table with stock + barcode controls, and a "Today's Sales" panel with per-sale Undo (Sell Mode only). In Sell Mode the input menu (filter/form/table) is hidden and only the sales panel is shown (driven by a `sell-mode` class on `<html>`). |
 | `views/brands.ejs` | Brands page: lists every brand (name, type, product count) with an inline **Rename** (fixes typos, no data loss) and a **Delete** button that is only enabled when the brand has 0 products. |
@@ -32,6 +32,8 @@ The database file and tables are created automatically on first start.
 | `views/sales.ejs` | Sales report page: Daily (per-juice + detailed log), Last 7 Days (top sellers + daily totals), and Lifetime (all-time top sellers) tabs. |
 | `views/reorder.ejs` | Reorder page: juices at/below a configurable threshold, with the threshold editable in the UI and a per-row **Ordered** toggle (greys the row out and sinks it to the bottom). |
 | `public/js/admin.js` | Client logic: type filter (Disposables/Juices), adaptive add form (the active tab drives the type → MG field + brand pool), rapid-add form persistence (type/brand/mg remembered in `sessionStorage`), table sorting, stock +/-, barcode scanner handling (reads the current mode via `getScanMode()`), and the Today's Sales panel (load/prepend/undo). |
+| `public/js/camera.js` | Camera data-entry flow (mobile, Input Mode): a modal with a live ZXing barcode scan (auto-capture), a box-front photo snap (downscaled to ~1024px JPEG client-side), a POST to `POST /ocr/extract`, and pre-filling of the add form (barcode / brand / flavor / mg) for a quick human review. Requires a secure context (HTTPS via `tailscale serve` or localhost) for camera access. |
+| `public/vendor/zxing-browser.min.js`, `public/vendor/zxing-library.min.js` | Self-hosted UMD builds of `@zxing/browser` + `@zxing/library` (barcode decoding in the browser; no CDN dependency). |
 | `public/js/theme.js` | Dark-mode toggle (persists the choice in a `theme` cookie), the mobile hamburger nav, and the persistent Sell/Input scan-mode button (persists the mode in `sessionStorage`, exposes `getScanMode()`/`toggleScanMode()`, and toggles the `sell-mode` class on `<html>`). The theme class itself is applied by a small inline `<head>` script so there's no flash of the wrong theme. |
 | `public/css/base.css` | Shared theme variables (light + `html.dark` palettes), the sticky top navigation, and the theme-toggle button. Loaded on every page before the page-specific stylesheet. |
 | `public/css/admin.css` | Admin panel + report-page styling (stock controls, barcode column, scan toast, sales panel, report tabs). All colors reference the theme variables from `base.css`; on phones the tables scroll horizontally inside their container. |
@@ -60,6 +62,7 @@ The database file and tables are created automatically on first start.
 | `POST /toggle-juice/:id` | Flip a juice's `active` flag. |
 | `POST /stock/:id` | Adjust stock: `{ delta: ±n }` or `{ stock: n }`. Auto-disables at 0, re-enables above 0. |
 | `POST /juice/:id/barcode` | Assign/update a barcode for a juice. |
+| `POST /ocr/extract` | Camera OCR: accepts `{ image: <base64 data URL>, type }`, forwards the photo to the local llama.cpp vision server (`LLAMA_URL`, default `http://192.168.1.122:8080`), and returns `{ brand_id, brand_name, brand_raw, flavor, mg }` — mg snapped to the form's fixed options, brand fuzzy-matched against the brand pool for the type. 502 with a friendly message if the model is unreachable or unparseable. |
 | `POST /scan/lookup` | Look up a barcode without selling (used by Input Mode). |
 | `POST /scan` | Sell one unit of the matching juice (Sell Mode). Auto-disables when stock hits 0. Also logs the sale to the `sales` table and returns the new sale in the response. |
 | `GET /api/sales/today` | Today's sales (newest first) with a running total — feeds the admin panel's right-side "Today's Sales" panel. |
@@ -100,6 +103,21 @@ Two modes, toggled by the **persistent Sell/Input button** in the top nav (top-l
 
 - **Sell Mode (default)** — scanning a barcode sells one unit: stock decrements, the number updates in place, the sale is logged to the `sales` table and added to the Today's Sales panel, and a toast confirms. Unknown barcodes and disabled juices show an error toast. On the admin page the input menu is hidden so only the Today's Sales panel is shown.
 - **Input Mode** — scanning a **new** barcode fills the Barcode field in the add form (then pick brand/flavor/mg and submit). Scanning a barcode that's **already in the system** adds 1 to its stock instead. Clicking `Add` on a row (in the Barcode column) assigns the next scan to that specific juice. On the admin page the full management UI (type tabs, add form, table) is shown.
+
+### Camera Data Entry (mobile, Input Mode)
+A **📷 Add via camera** button (in the type-tabs row) opens a two-step camera modal for adding a product from a phone — no USB scanner needed:
+
+1. **Scan the barcode** — the rear camera opens with a live ZXing decode loop (EAN/UPC/Code 128/39/QR); the first detected code is captured automatically and the modal advances.
+2. **Photograph the box front** — a shutter button snaps the current frame, downscaled client-side to ~1024px JPEG (canvas), and POSTs it to `POST /ocr/extract`.
+3. **Review & add** — the server forwards the photo to the local llama.cpp vision server (`LLAMA_URL`, default `http://192.168.1.122:8080`, OpenAI-compatible `/v1/chat/completions` with the mmproj loaded) and returns `{ brand_id, brand_name, brand_raw, flavor, mg }`. The add form pre-fills itself (barcode from step 1, brand fuzzy-matched against the brand pool for the active tab, flavor, mg snapped to the fixed 0/3/6/25/35/50/55 options). The human reviews and presses Add — nothing is committed automatically.
+
+Design notes:
+
+- **Server-side forwarding only** — the phone talks to the Node server (over Tailscale HTTPS); the Node server talks to llama.cpp at the LAN IP. The device never sees the llama.cpp address.
+- **Secure context required** — `getUserMedia` only works over HTTPS (or localhost), so the app must be served via `tailscale serve` for camera entry. The modal shows a specific error if the camera is unavailable (permission denied / no camera / not HTTPS).
+- **Graceful degradation** — if llama.cpp is down, slow (60s timeout), or returns unparseable JSON (one retry), the route returns 502 and the modal shows "enter the details manually"; the captured barcode is still usable in the form.
+- **Brand mismatch** — if the extracted brand doesn't match an existing brand, a hint under the Brand field shows the raw name and points at the `+` new-brand button.
+- The modal auto-switches to Input Mode if opened in Sell Mode, locks page scroll while open, and closes on backdrop click / Escape (not while OCR is running).
 
 ### Auto Disable / Re-enable
 - Selling the **last unit** (or setting stock to 0) sets `active = 0`, dropping the juice from the printed menu. The row dims in place.
@@ -154,6 +172,8 @@ Keep the README accurate and current — it is the primary reference for anyone 
 ---
 
 ## Change Log
+
+- **2026-10-05** — Added **camera data entry** (mobile, Input Mode): a 📷 Add via camera button opens a two-step modal — live ZXing barcode scan (auto-capture) then a box-front photo snap (downscaled to ~1024px JPEG client-side). New `POST /ocr/extract` route forwards the photo to a local llama.cpp vision server (`LLAMA_URL` env, default `http://192.168.1.122:8080`, OpenAI-compatible API with mmproj) and returns `{ brand_id, brand_name, brand_raw, flavor, mg }` — mg snapped to the form's fixed options, brand fuzzy-matched against the brand pool for the active tab. The add form pre-fills for a quick human review (nothing auto-commits). New `public/js/camera.js` + modal markup in `views/admin.ejs` + styles in `admin.css`; ZXing UMD bundles self-hosted in `public/vendor/` (new `@zxing/browser` + `@zxing/library` deps). `express.json` limit raised to 10mb for the base64 photo. Camera access requires HTTPS (`tailscale serve`); the modal degrades gracefully with specific errors (permission / no camera / not HTTPS) and a 502 "enter manually" path when the model is unreachable.
 
 - **2026-10-04** — Fixed table sorting in Firefox. `sortTable()` called `.forEach` on `table.tHead.rows[0].cells`, an `HTMLCollection` that lacks `forEach` in Firefox (unlike `NodeList`), so it threw `TypeError: ...cells.forEach is not a function` and aborted before reordering any rows. Wrapped the collection in `Array.from()` so the header-indicator reset works in all browsers.
 

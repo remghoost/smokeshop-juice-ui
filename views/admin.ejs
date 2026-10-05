@@ -28,6 +28,7 @@
         <div class="type-tabs" id="type-filter" data-initial="<%= type === 'disposable' ? 'disposable' : 'juice' %>">
             <button type="button" class="type-tab" data-filter="disposable" onclick="applyFilter('disposable')">Disposables</button>
             <button type="button" class="type-tab" data-filter="juice" onclick="applyFilter('juice')">Juices</button>
+            <button type="button" class="type-tab cam-btn" onclick="Camera.open()" title="Scan the barcode with the camera, then photograph the box front to auto-fill the form">📷 Add via camera</button>
         </div>
 
         <% if (typeof message !== 'undefined' && message) { %>
@@ -54,6 +55,7 @@
                     </select>
                     <button type="button" onclick="addNewBrand()" class="btn-secondary" title="Add New Brand">+</button>
                 </div>
+                <div id="cam-brand-hint" class="cam-brand-hint hidden"></div>
             </div>
             <div class="form-group">
                 <label for="flavor">Flavor</label>
@@ -149,7 +151,46 @@
     </aside>
     </div><!-- /.main-layout -->
 
+    <!-- Camera data-entry modal (mobile, Input Mode) -->
+    <div id="camera-modal" class="camera-modal hidden" role="dialog" aria-modal="true" aria-label="Add product via camera">
+        <div class="camera-modal-box">
+            <button type="button" class="camera-close" onclick="Camera.close()" aria-label="Close camera">✕</button>
+
+            <div id="cam-step-scan" class="cam-step">
+                <h2>1. Scan the barcode</h2>
+                <p class="cam-hint">Point the camera at the product's barcode. It captures automatically.</p>
+            </div>
+
+            <div id="cam-step-photo" class="cam-step hidden">
+                <h2>2. Photograph the box front</h2>
+                <p class="cam-hint">Barcode: <span id="cam-barcode-value" class="barcode-value"></span></p>
+                <p class="cam-hint">Aim at the front of the box (brand, flavor, and mg visible), then tap the shutter.</p>
+            </div>
+
+            <div id="cam-step-result" class="cam-step hidden">
+                <h2>Reading the box…</h2>
+                <img id="cam-photo-preview" class="cam-photo-preview" alt="Box photo">
+                <div id="cam-busy" class="cam-busy">Reading the box…</div>
+                <div id="cam-ocr-result" class="cam-ocr-result hidden"></div>
+                <button type="button" class="btn-secondary" onclick="Camera.retakePhoto()">Retake photo</button>
+            </div>
+
+            <!-- Shared live viewfinder (visible in the scan + photo steps) -->
+            <div id="cam-viewfinder" class="cam-viewfinder">
+                <video id="camera-video" playsinline muted></video>
+                <div id="cam-scanline" class="cam-scanline"></div>
+            </div>
+            <div id="cam-shutter-row" class="cam-shutter-row hidden">
+                <button type="button" class="btn-primary cam-shutter" onclick="Camera.snapPhoto()">📸 Take photo</button>
+            </div>
+            <div id="cam-error" class="cam-error hidden"></div>
+        </div>
+    </div>
+
+    <script src="/vendor/zxing-library.min.js"></script>
+    <script src="/vendor/zxing-browser.min.js"></script>
     <script src="/js/theme.js"></script>
     <script src="/js/admin.js"></script>
+    <script src="/js/camera.js"></script>
 </body>
 </html>

@@ -7,7 +7,9 @@ const PORT = process.env.PORT || 3000;
 
 app.set("view engine", "ejs");
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// 10mb limit: the camera flow POSTs a base64-encoded box photo (~200-500kb)
+// to /ocr/extract, which exceeds the default 100kb JSON body limit.
+app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // Format a Date as a local YYYY-MM-DD string (for daily grouping)
@@ -681,6 +683,153 @@ app.post("/settings/reorder-threshold", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Database error" });
+  }
+});
+
+// ============================================================
+// Camera OCR: extract brand / flavor / mg from a box photo
+// ============================================================
+// The phone's camera flow POSTs a base64 photo of the box front. This route
+// forwards it to a local llama.cpp vision server (OpenAI-compatible API,
+// mmproj loaded) and returns structured fields. The device never talks to
+// the llama.cpp server directly — all forwarding happens here, so the LAN
+// IP stays server-side only (the phone reaches us over Tailscale).
+const LLAMA_URL = process.env.LLAMA_URL || "http://192.168.1.122:8080";
+const LLAMA_MODEL = process.env.LLAMA_MODEL || "local-model";
+const LLAMA_TIMEOUT_MS = 60000;
+
+// The fixed mg options in the add form (must match the <select> in admin.ejs)
+const MG_OPTIONS = [0, 3, 6, 25, 35, 50, 55];
+
+// Snap an extracted mg to the nearest option in the form's fixed list
+function snapMg(value) {
+  const n = parseInt(value, 10);
+  if (isNaN(n) || n < 0) return null;
+  let best = MG_OPTIONS[0];
+  for (const opt of MG_OPTIONS) {
+    if (Math.abs(opt - n) < Math.abs(best - n)) best = opt;
+  }
+  return best;
+}
+
+// Fuzzy-match an extracted brand name against the brand pool for a type.
+// Exact (case-insensitive) match first, then substring in either direction.
+async function matchBrand(name, type) {
+  if (!name) return null;
+  const clean = name.trim().toLowerCase();
+  if (!clean) return null;
+  const brands = await db.all(
+    "SELECT id, name FROM brands WHERE type = ? ORDER BY name ASC",
+    [type]
+  );
+  const exact = brands.find((b) => b.name.toLowerCase() === clean);
+  if (exact) return exact;
+  const partial = brands.find(
+    (b) =>
+      b.name.toLowerCase().includes(clean) ||
+      clean.includes(b.name.toLowerCase())
+  );
+  return partial || null;
+}
+
+// Ask the vision model to extract the product fields from a box photo.
+// Returns the parsed { brand, flavor, mg } object, or null if unparseable.
+async function extractFromImage(dataUrl, type) {
+  const label = type === "disposable" ? "disposable vape" : "vape juice";
+  const prompt =
+    `You are reading the front of a ${label} product box. ` +
+    `Extract the brand name, flavor name, and nicotine strength. ` +
+    `Reply with ONLY a JSON object, no other text: ` +
+    `{"brand": "...", "flavor": "...", "mg": <number>}. ` +
+    `mg is nicotine in mg/ml. If the box shows a percentage, convert it ` +
+    `(1% = 10mg/ml, 2% = 20mg/ml, 5% = 50mg/ml). ` +
+    `Use null for any field you cannot read.`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLAMA_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${LLAMA_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: LLAMA_MODEL,
+        temperature: 0,
+        max_tokens: 200,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`llama.cpp returned ${response.status}`);
+    }
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error("Empty response from model");
+    return parseModelJson(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Small models sometimes wrap JSON in code fences or add a sentence.
+// Strip fences and pull out the first {...} object.
+function parseModelJson(text) {
+  let t = text.trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  const start = t.indexOf("{");
+  const end = t.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(t.slice(start, end + 1));
+  } catch (e) {
+    return null;
+  }
+}
+
+app.post("/ocr/extract", async (req, res) => {
+  const { image, type } = req.body || {};
+  const productType = type === "disposable" ? "disposable" : "juice";
+
+  if (!image || typeof image !== "string" || !image.startsWith("data:image/")) {
+    return res.status(400).json({ error: "No image provided" });
+  }
+
+  try {
+    // One retry: small models occasionally emit malformed JSON
+    let parsed = await extractFromImage(image, productType);
+    if (!parsed) parsed = await extractFromImage(image, productType);
+    if (!parsed) {
+      return res.status(502).json({
+        error:
+          "Could not read the box photo. Please enter the details manually.",
+      });
+    }
+
+    const brand = await matchBrand(parsed.brand, productType);
+    const mg =
+      productType === "disposable" ? null : snapMg(parsed.mg);
+
+    res.status(200).json({
+      brand_id: brand ? brand.id : null,
+      brand_name: brand ? brand.name : null,
+      brand_raw: parsed.brand || null,
+      flavor: parsed.flavor || null,
+      mg,
+    });
+  } catch (err) {
+    console.error("OCR extract failed:", err.message);
+    res.status(502).json({
+      error: "OCR service unavailable. Please enter the details manually.",
+    });
   }
 });
 
