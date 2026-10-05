@@ -758,6 +758,11 @@ async function extractFromImage(dataUrl, type) {
       body: JSON.stringify({
         model: LLAMA_MODEL,
         temperature: 0,
+        // Gemma 4 E2B is a "thinking" model — by default it spends tokens on
+        // internal reasoning (reasoning_content) before emitting the answer,
+        // which exhausted max_tokens and left content empty. Disabling
+        // reasoning makes it go straight to the JSON object.
+        reasoning_effort: "none",
         max_tokens: 200,
         messages: [
           {
