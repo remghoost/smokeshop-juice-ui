@@ -739,7 +739,14 @@ async function matchBrand(name, type) {
 // Ask the vision model to extract the product fields from a box photo.
 // Returns the parsed { brand, flavor, mg } object, or null if unparseable.
 async function extractFromImage(dataUrl, type) {
-  const prompt = buildOcrPrompt(type);
+  // Pull the live brand pool for this type from the DB so the prompt always
+  // reflects the brands the shop actually carries (no hardcoding).
+  const brandRows = await db.all(
+    "SELECT name FROM brands WHERE type = ? ORDER BY name ASC",
+    [type]
+  );
+  const brandNames = brandRows.map((r) => r.name);
+  const prompt = buildOcrPrompt(type, brandNames);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLAMA_TIMEOUT_MS);
