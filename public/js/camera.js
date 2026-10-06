@@ -110,15 +110,30 @@ const Camera = {
     // ---------- Camera ----------
     async startCamera() {
         this.stopCamera();
-        try {
-            this.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' },
-                audio: false
-            });
-            this.video.srcObject = this.stream;
-            await this.video.play();
-        } catch (err) {
-            this.showCameraError(err);
+        // "Starting videoinput failed" (NotReadableError) is usually a
+        // transient device lock — the camera is briefly held by the previous
+        // stream or another process. Retry a couple of times before giving up.
+        const MAX_ATTEMPTS = 3;
+        for (let attempt = 1; ; attempt++) {
+            try {
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' },
+                    audio: false
+                });
+                this.video.srcObject = this.stream;
+                await this.video.play();
+                return;
+            } catch (err) {
+                const transient = err && (err.name === 'NotReadableError' || err.name === 'AbortError');
+                if (transient && attempt < MAX_ATTEMPTS) {
+                    // Back off, fully release the device, then try again.
+                    await new Promise(r => setTimeout(r, 400 * attempt));
+                    this.stopCamera();
+                    continue;
+                }
+                this.showCameraError(err);
+                return;
+            }
         }
     },
 
