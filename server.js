@@ -746,7 +746,7 @@ async function extractFromImage(dataUrl, type) {
     `Reply with ONLY a JSON object, no other text: ` +
     `{"brand": "...", "flavor": "...", "mg": <number>}. ` +
     'Brand names that exist for disposables are: Geek Bar Pulse, Geek Bar Pulse X, Geek Bar Pulse X2, Foger Pod, Foger Kit, Flum UT Bar, Flum Mello Pro, Foger Bit, Movkin Pod, Movkin Kit.' +
-    'Flavor names should only have every word capatalized, not the entire word. For instance, Blue Rancher is correct while BLUE RANCHER is not correct.' +
+    'Flavor names should not be in all caps. Only the first letter of each word should be capatalized.' +
     'Brand names that exist for juices are: Juice Head, Juice Head (Freeze), Reds, Reds (Iced), The One, Pod Juice, Pod Juice (Freeze), Cloud Nurdz, and Cloud Nurdz (Freeze)' +
     'If the box has the word "Freeze" on it anywhere, it is the "Freeze" variant of that juice brand.' +
     `mg is nicotine in mg/ml. If the box shows a percentage, convert it ` +
