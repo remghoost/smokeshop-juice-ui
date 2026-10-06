@@ -140,9 +140,11 @@ const Camera = {
                         facingMode: 'environment',
                         // Ask for a high-res stream: the decode loop works on a
                         // small canvas so this is free, and the photo capture
-                        // gets more pixels on the box = sharper text.
-                        width: { ideal: 1920 },
-                        height: { ideal: 1440 },
+                        // gets more pixels on the box = sharper text. 2560-wide
+                        // so the OCR capture can keep full detail (see maxDim
+                        // below) instead of being downscaled to 1600.
+                        width: { ideal: 2560 },
+                        height: { ideal: 1920 },
                         // Continuous autofocus keeps the box sharp as the user
                         // moves. Ignored on platforms that don't support it.
                         focusMode: 'continuous'
@@ -543,7 +545,9 @@ const Camera = {
     // Capture exactly the region the viewfinder shows (4:3, object-fit: cover)
     _captureVisible() {
         const vis = this._visibleRegion();
-        const maxDim = 1600; // higher cap: more pixels on the box = sharper text
+        // Cap the long edge at 2560px: more pixels on the box = sharper text
+        // for the vision model. Kept well under the 10mb JSON body limit.
+        const maxDim = 2560;
         const scale = Math.min(1, maxDim / Math.max(vis.sw, vis.sh));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(vis.sw * scale));
@@ -641,7 +645,9 @@ const Camera = {
         w = Math.max(1, w);
         h = Math.max(1, h);
 
-        const maxDim = 1600;
+        // Cap the long edge at 2560px so the cropped box keeps full detail for
+        // the vision model (matches the full-frame fallback cap above).
+        const maxDim = 2560;
         const scale = Math.min(1, maxDim / Math.max(w, h));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(w * scale));
