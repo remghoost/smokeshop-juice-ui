@@ -744,8 +744,8 @@ async function extractFromImage(dataUrl, type) {
     `Extract the brand name, flavor name, and nicotine strength. ` +
     `Reply with ONLY a JSON object, no other text: ` +
     `{"brand": "...", "flavor": "...", "mg": <number>}. ` +
-    'Brand names that exist are: Geek Bar Pulse, Geek Bar Pulse X, Geek Bar Pulse X2, Foger Pod, Foger Kit, Flum UT Bar, Flum Mello Pro, Foger Bit, Movkin Pod, Movkin Kit.'
-    'Flavor names should only have every word capatalized, not the entire word. For instance, Blue Rancher is correct while BLUE RANCHER is not correct.'
+    'Brand names that exist are: Geek Bar Pulse, Geek Bar Pulse X, Geek Bar Pulse X2, Foger Pod, Foger Kit, Flum UT Bar, Flum Mello Pro, Foger Bit, Movkin Pod, Movkin Kit.' +
+    'Flavor names should only have every word capatalized, not the entire word. For instance, Blue Rancher is correct while BLUE RANCHER is not correct.' +
     `mg is nicotine in mg/ml. If the box shows a percentage, convert it ` +
     `(1% = 10mg/ml, 2% = 20mg/ml, 5% = 50mg/ml). ` +
     `Use null for any field you cannot read.`;
