@@ -504,7 +504,6 @@ const Camera = {
         if (!this.video || this.video.videoWidth === 0) return;
         this.setBusy(true, 'Detecting the box…');
         let photo = null;
-        let cropped = false;
         try {
             const box = this._detectBoxBBox(this.video);
             if (box) {
@@ -513,7 +512,6 @@ const Camera = {
                 const vis = this._visibleRegion();
                 if (box.w > vis.sw * 0.15 && box.h > vis.sh * 0.15) {
                     photo = this._cropToBox(this.video, box);
-                    cropped = true;
                 }
             }
         } catch (e) {
@@ -525,9 +523,10 @@ const Camera = {
         this.capturedPhoto = photo;
         document.getElementById('cam-photo-preview').src = photo;
         this.showStep('result');
-        // Only save the post-processed (cropped) capture so we can verify the
-        // box detection is consistent. Skip the full-frame fallback.
-        if (cropped) this._saveCapture(photo);
+        // Always save the capture — it's exactly what the OCR model saw
+        // (cropped when detection succeeded, full-frame fallback otherwise),
+        // so we can inspect it to diagnose both OCR and box-detection issues.
+        this._saveCapture(photo);
         // runOcr() has a `if (this.busy) return` guard, so clear the flag
         // (set during detection) before handing off to it.
         this.busy = false;
