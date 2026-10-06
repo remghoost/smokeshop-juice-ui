@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const db = require("./db");
 const { buildOcrPrompt } = require("./ocr-prompt");
 
@@ -849,6 +850,41 @@ app.post("/ocr/extract", async (req, res) => {
     res.status(502).json({
       error: "OCR service unavailable. Please enter the details manually.",
     });
+  }
+});
+
+// Save a box photo to disk for diagnosing OCR issues. The phone POSTs the
+// (possibly perspective-corrected) capture as a base64 data URL. We write it
+// to captures/ with a timestamped filename so the exact image the model saw
+// can be inspected later. Best-effort: a failure to save never blocks OCR.
+const CAPTURES_DIR = path.join(__dirname, "captures");
+
+app.post("/ocr/capture", (req, res) => {
+  const { image, label } = req.body || {};
+  if (!image || typeof image !== "string" || !image.startsWith("data:image/")) {
+    return res.status(400).json({ error: "No image provided" });
+  }
+  try {
+    if (!fs.existsSync(CAPTURES_DIR)) {
+      fs.mkdirSync(CAPTURES_DIR, { recursive: true });
+    }
+    const m = image.match(/^data:image\/(\w+);base64,(.*)$/);
+    if (!m) {
+      return res.status(400).json({ error: "Malformed image data URL" });
+    }
+    const ext = m[1] === "jpeg" ? "jpg" : m[1];
+    const buf = Buffer.from(m[2], "base64");
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const safeLabel = (label || "capture")
+      .replace(/[^a-z0-9_-]+/gi, "_")
+      .slice(0, 40);
+    const filename = `${ts}_${safeLabel}.${ext}`;
+    fs.writeFileSync(path.join(CAPTURES_DIR, filename), buf);
+    console.log(`[OCR] Saved capture: ${filename} (${buf.length} bytes)`);
+    res.status(200).json({ saved: true, filename });
+  } catch (err) {
+    console.error("Capture save failed:", err.message);
+    res.status(500).json({ error: "Failed to save capture" });
   }
 });
 

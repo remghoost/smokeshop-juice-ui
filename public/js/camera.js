@@ -1,9 +1,11 @@
 // ===== Camera data entry (mobile) =====
-// Two flows share one modal:
-//   • Add (Input Mode): (1) live barcode scan via ZXing, (2) photo of the box
-//     front. The photo is downscaled client-side, POSTed to /ocr/extract
-//     (which forwards it to the local llama.cpp vision server), and the
-//     returned fields pre-fill the add form for a quick human review.
+// Three flows share one modal:
+//   • Add (Input Mode): (1) live barcode scan via ZXing. If the barcode is
+//     already a known product, a popup asks how many to add to stock. If it's
+//     new, (2) photograph the box front — the box is auto-detected, cropped,
+//     and perspective-corrected (flattened) client-side with OpenCV.js, then
+//     POSTed to /ocr/extract (which forwards it to the local llama.cpp vision
+//     server). The returned fields pre-fill the add form for a quick review.
 //   • Sell (Sell Mode): (1) live barcode scan, then the code is POSTed to
 //     /scan to sell one unit — no USB barcode reader required.
 //
@@ -19,7 +21,9 @@ const Camera = {
     scanning: false,
     capturedBarcode: null,
     capturedPhoto: null, // data URL
-    busy: false, // true while an async op (OCR / sell) is in flight
+    busy: false, // true while an async op (OCR / sell / stock) is in flight
+    torchOn: false,
+    stockItem: null, // looked-up product for the stock-add popup
 
     // Decode-loop state (cropped, throttled, consecutive-read)
     _decodeCanvas: null,
@@ -27,6 +31,9 @@ const Camera = {
     _lastCode: null,
     _consecutive: 0,
     _decodeTimer: null,
+
+    // OpenCV.js (box detection / perspective correction) — loaded lazily
+    _cvPromise: null,
 
     // Tuning for the live scan. We decode a central ROI of the *visible*
     // region (not the whole frame) on a throttled timer, and require a few
@@ -66,13 +73,22 @@ const Camera = {
         this.capturedBarcode = null;
         this.capturedPhoto = null;
         this.busy = false;
+        this.torchOn = false;
+        this.stockItem = null;
         this._lastCode = null;
         this._consecutive = 0;
-        // Clear any previous sell result / actions / busy indicator
-        ['cam-sell-result', 'cam-sell-actions', 'cam-sell-busy'].forEach(id => {
+        this._clearBoxOverlay();
+        // Clear any previous sell / stock results, busy indicators, and torch
+        ['cam-sell-result', 'cam-sell-actions', 'cam-sell-busy',
+         'cam-stock-result', 'cam-stock-busy'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.classList.add('hidden');
         });
+        const torchBtn = document.getElementById('cam-torch-btn');
+        if (torchBtn) {
+            torchBtn.classList.add('hidden');
+            torchBtn.classList.remove('torch-on');
+        }
     },
 
     _show() {
@@ -80,7 +96,9 @@ const Camera = {
         document.body.classList.add('modal-open');
     },
 
-    close() {
+    async close() {
+        // Make sure the torch is off before releasing the camera
+        await this._setTorch(false);
         this.stopCamera();
         this.modal.classList.add('hidden');
         document.body.classList.remove('modal-open');
@@ -93,11 +111,15 @@ const Camera = {
         document.getElementById('cam-step-photo').classList.toggle('hidden', step !== 'photo');
         document.getElementById('cam-step-result').classList.toggle('hidden', step !== 'result');
         document.getElementById('cam-step-sell').classList.toggle('hidden', step !== 'sell');
-        // Shared viewfinder is visible in the scan + photo + sell steps; the
-        // scanline in the scan + sell steps; the shutter only in the photo step.
+        document.getElementById('cam-step-stock').classList.toggle('hidden', step !== 'stock');
+        // Shared viewfinder is visible in the scan + photo + sell + stock
+        // steps; the scanline in the scan + sell steps; the shutter only in
+        // the photo step.
         document.getElementById('cam-viewfinder').classList.toggle('hidden', step === 'result');
         document.getElementById('cam-scanline').classList.toggle('hidden', step !== 'scan' && step !== 'sell');
         document.getElementById('cam-shutter-row').classList.toggle('hidden', step !== 'photo');
+        // The detected-box overlay only makes sense while photographing
+        if (step !== 'photo') this._clearBoxOverlay();
     },
 
     setBusy(busy, text) {
@@ -117,11 +139,22 @@ const Camera = {
         for (let attempt = 1; ; attempt++) {
             try {
                 this.stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' },
+                    video: {
+                        facingMode: 'environment',
+                        // Ask for a high-res stream: the decode loop works on a
+                        // small canvas so this is free, and the photo capture
+                        // gets more pixels on the box = sharper text.
+                        width: { ideal: 1920 },
+                        height: { ideal: 1440 },
+                        // Continuous autofocus keeps the box sharp as the user
+                        // moves. Ignored on platforms that don't support it.
+                        focusMode: 'continuous'
+                    },
                     audio: false
                 });
                 this.video.srcObject = this.stream;
                 await this.video.play();
+                this._updateTorchButton();
                 return;
             } catch (err) {
                 const transient = err && (err.name === 'NotReadableError' || err.name === 'AbortError');
@@ -177,6 +210,35 @@ const Camera = {
                 if (this.stream) this.startBarcodeScan();
             });
         } : null;
+    },
+
+    // ---------- Torch ----------
+    _updateTorchButton() {
+        const btn = document.getElementById('cam-torch-btn');
+        if (!btn || !this.stream) return;
+        const track = this.stream.getVideoTracks()[0];
+        const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+        btn.classList.toggle('hidden', !caps.torch);
+    },
+
+    async _setTorch(on) {
+        if (!this.stream) return;
+        const track = this.stream.getVideoTracks()[0];
+        if (!track) return;
+        try {
+            const caps = track.getCapabilities ? track.getCapabilities() : {};
+            if (!caps.torch) return;
+            await track.applyConstraints({ advanced: [{ torch: !!on }] });
+            this.torchOn = !!on;
+            const btn = document.getElementById('cam-torch-btn');
+            if (btn) btn.classList.toggle('torch-on', this.torchOn);
+        } catch (e) {
+            console.warn('Torch toggle failed:', e);
+        }
+    },
+
+    toggleTorch() {
+        this._setTorch(!this.torchOn);
     },
 
     // The region of the raw video frame that the viewfinder actually shows.
@@ -290,10 +352,31 @@ const Camera = {
             this.sellBarcode(code);
             return;
         }
+        // 'add' mode: check whether this barcode is already a known product.
+        // Known -> add-to-stock popup. New -> photograph the box.
         this.capturedBarcode = code;
-        document.getElementById('cam-barcode-value').textContent = code;
-        this.showStep('photo');
-        this.setBusy(false);
+        this.setBusy(true, 'Looking up barcode…');
+        fetch('/scan/lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        })
+            .then(r => r.json().catch(() => ({})))
+            .then(data => {
+                this.setBusy(false);
+                if (data.found) {
+                    this.showStockStep(data);
+                } else {
+                    document.getElementById('cam-barcode-value').textContent = code;
+                    this.showStep('photo');
+                }
+            })
+            .catch(() => {
+                // Lookup failed — fall back to the photo flow.
+                this.setBusy(false);
+                document.getElementById('cam-barcode-value').textContent = code;
+                this.showStep('photo');
+            });
     },
 
     // ---------- Sell flow: scan a barcode, sell one unit ----------
@@ -349,21 +432,120 @@ const Camera = {
         el.classList.remove('hidden');
     },
 
+    // ---------- Stock-add flow: known barcode -> how many to add ----------
+    showStockStep(item) {
+        this.stockItem = item;
+        document.getElementById('cam-stock-label').textContent = item.label;
+        document.getElementById('cam-stock-current').textContent = item.stock;
+        document.getElementById('cam-stock-qty').value = 1;
+        document.getElementById('cam-stock-result').classList.add('hidden');
+        this.showStep('stock');
+    },
+
+    stockAdjust(delta) {
+        const input = document.getElementById('cam-stock-qty');
+        let v = parseInt(input.value, 10);
+        if (isNaN(v)) v = 1;
+        v = Math.max(1, v + delta);
+        input.value = v;
+    },
+
+    async confirmStock() {
+        if (this.busy || !this.stockItem) return;
+        const qty = parseInt(document.getElementById('cam-stock-qty').value, 10);
+        if (isNaN(qty) || qty < 1) return;
+        this.busy = true;
+        const busyEl = document.getElementById('cam-stock-busy');
+        const resultEl = document.getElementById('cam-stock-result');
+        busyEl.classList.remove('hidden');
+        resultEl.classList.add('hidden');
+        try {
+            const response = await fetch(`/stock/${this.stockItem.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ delta: qty })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to update stock');
+            }
+            // Keep the table row in sync
+            const input = document.querySelector(`input.stock-input[data-id="${this.stockItem.id}"]`);
+            if (input) input.value = data.stock;
+            if (data.reactivated && typeof updateRowActiveState === 'function') {
+                updateRowActiveState(this.stockItem.id, true);
+            }
+            resultEl.textContent = `Added ${qty} — now ${data.stock} in stock`;
+            resultEl.className = 'cam-ocr-result ok';
+            this.stockItem.stock = data.stock;
+            document.getElementById('cam-stock-current').textContent = data.stock;
+            if (showScanStatus) {
+                showScanStatus(`Added ${qty} to ${this.stockItem.label}`, 'success');
+            }
+        } catch (err) {
+            resultEl.textContent = err.message || 'Failed to update stock';
+            resultEl.className = 'cam-ocr-result fail';
+        }
+        busyEl.classList.add('hidden');
+        this.busy = false;
+    },
+
     scanNext() {
         document.getElementById('cam-sell-result').classList.add('hidden');
         document.getElementById('cam-sell-actions').classList.add('hidden');
-        this.showStep('sell');
+        document.getElementById('cam-stock-result').classList.add('hidden');
+        this._clearBoxOverlay();
+        this.showStep(this.mode === 'sell' ? 'sell' : 'scan');
         this.startBarcodeScan();
     },
 
     // ---------- Step 2: snap the box photo ----------
-    snapPhoto() {
+    // Capture the visible region, detect the box, crop + flatten it, and send
+    // the result to OCR. Falls back to the full visible region if no box is
+    // found (or OpenCV isn't available).
+    async snapPhoto() {
         if (!this.video || this.video.videoWidth === 0) return;
-        // Capture exactly the region the viewfinder shows (4:3, object-fit:
-        // cover) so the box fills the frame the way it looks on screen. The
-        // old code grabbed the whole (often 16:9) frame, so the box was a
-        // small sliver surrounded by background and the vision model lost the
-        // fine detail (flavor text, mg) it needs.
+        this.setBusy(true, 'Detecting the box…');
+        let photo = null;
+        try {
+            if (await this._cvReady()) {
+                const corners = this._detectBoxCorners(this.video);
+                if (corners) {
+                    this._drawBoxOverlay(corners);
+                    // Only warp if the detected box is a reasonable size
+                    const vis = this._visibleRegion();
+                    const boxW = Math.max(...corners.map(c => c.x)) - Math.min(...corners.map(c => c.x));
+                    const boxH = Math.max(...corners.map(c => c.y)) - Math.min(...corners.map(c => c.y));
+                    if (boxW > vis.sw * 0.15 && boxH > vis.sh * 0.15) {
+                        photo = this._warpBox(this.video, corners);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Box detection failed, using full frame:', e);
+        }
+        if (!photo) {
+            photo = this._captureVisible();
+        }
+        this.capturedPhoto = photo;
+        document.getElementById('cam-photo-preview').src = photo;
+        this.showStep('result');
+        this._saveCapture(photo);
+        // runOcr() has a `if (this.busy) return` guard, so clear the flag
+        // (set during detection) before handing off to it.
+        this.busy = false;
+        this.runOcr();
+    },
+
+    retakePhoto() {
+        this.capturedPhoto = null;
+        document.getElementById('cam-photo-preview').removeAttribute('src');
+        this._clearBoxOverlay();
+        this.showStep('photo');
+    },
+
+    // Capture exactly the region the viewfinder shows (4:3, object-fit: cover)
+    _captureVisible() {
         const vis = this._visibleRegion();
         const maxDim = 1600; // higher cap: more pixels on the box = sharper text
         const scale = Math.min(1, maxDim / Math.max(vis.sw, vis.sh));
@@ -372,16 +554,202 @@ const Camera = {
         canvas.height = Math.max(1, Math.round(vis.sh * scale));
         const ctx = canvas.getContext('2d');
         ctx.drawImage(this.video, vis.sx, vis.sy, vis.sw, vis.sh, 0, 0, canvas.width, canvas.height);
-        this.capturedPhoto = canvas.toDataURL('image/jpeg', 0.92);
-        document.getElementById('cam-photo-preview').src = this.capturedPhoto;
-        this.showStep('result');
-        this.runOcr();
+        return canvas.toDataURL('image/jpeg', 0.92);
     },
 
-    retakePhoto() {
-        this.capturedPhoto = null;
-        document.getElementById('cam-photo-preview').removeAttribute('src');
-        this.showStep('photo');
+    // ---------- OpenCV.js: box detection + perspective correction ----------
+    // Load OpenCV.js lazily (it's ~11MB) the first time we need it.
+    _cvReady() {
+        if (window.cv) return Promise.resolve(true);
+        if (!this._cvPromise) {
+            this._cvPromise = new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = '/vendor/opencv.js';
+                s.onload = () => resolve(true);
+                s.onerror = () => reject(new Error('OpenCV failed to load'));
+                document.head.appendChild(s);
+            });
+        }
+        return this._cvPromise;
+    },
+
+    // Detect the 4 corners of the product box in the current frame.
+    // Returns an array of 4 {x, y} points in *video* coordinates (ordered
+    // top-left, top-right, bottom-right, bottom-left), or null if no box-like
+    // quadrilateral is found.
+    _detectBoxCorners(video) {
+        const cv = window.cv;
+        const vis = this._visibleRegion();
+        // Work at a moderate resolution for speed
+        const maxDim = 640;
+        const scale = Math.min(1, maxDim / Math.max(vis.sw, vis.sh));
+        const w = Math.max(1, Math.round(vis.sw * scale));
+        const h = Math.max(1, Math.round(vis.sh * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, vis.sx, vis.sy, vis.sw, vis.sh, 0, 0, w, h);
+
+        const src = cv.imread(canvas);
+        const gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        const blurred = new cv.Mat();
+        cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+        const edges = new cv.Mat();
+        cv.Canny(blurred, edges, 50, 150);
+        const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+        const dilated = new cv.Mat();
+        cv.dilate(edges, dilated, kernel);
+
+        const contours = new cv.MatVector();
+        const hierarchy = new cv.Mat();
+        cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let best = null;
+        let bestArea = 0;
+        const minArea = (w * h) * 0.05; // box should be at least 5% of the frame
+        for (let i = 0; i < contours.size(); i++) {
+            const cnt = contours.get(i);
+            const area = cv.contourArea(cnt);
+            if (area >= minArea) {
+                const peri = cv.arcLength(cnt, true);
+                const approx = new cv.Mat();
+                cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+                if (approx.rows === 4 && cv.isContourConvex(approx) && area > bestArea) {
+                    const pts = [];
+                    for (let j = 0; j < 4; j++) {
+                        const p = approx.intPtr(j);
+                        pts.push({ x: p[0], y: p[1] });
+                    }
+                    bestArea = area;
+                    best = pts;
+                }
+                approx.delete();
+            }
+            cnt.delete();
+        }
+
+        // Release all Mats to avoid WASM memory leaks
+        src.delete(); gray.delete(); blurred.delete(); edges.delete();
+        kernel.delete(); dilated.delete(); contours.delete(); hierarchy.delete();
+
+        if (!best) return null;
+        const ordered = this._orderPoints(best);
+        // Scale back up to video coordinates
+        const invScale = 1 / scale;
+        return ordered.map(p => ({
+            x: p.x * invScale + vis.sx,
+            y: p.y * invScale + vis.sy
+        }));
+    },
+
+    // Order 4 points as top-left, top-right, bottom-right, bottom-left
+    _orderPoints(pts) {
+        const sum = pts.map(p => ({ p, s: p.x + p.y, d: p.y - p.x }));
+        sum.sort((a, b) => a.s - b.s);
+        const tl = sum[0].p;
+        const br = sum[3].p;
+        sum.sort((a, b) => a.d - b.d);
+        const bl = sum[0].p;
+        const tr = sum[3].p;
+        return [tl, tr, br, bl];
+    },
+
+    // Warp the detected box to a flat, axis-aligned rectangle and return it as
+    // a JPEG data URL. This "squares up" a skewed/angled shot so the vision
+    // model sees the box front-on.
+    _warpBox(video, corners) {
+        const cv = window.cv;
+        const vis = this._visibleRegion();
+        const maxDim = 1600;
+        const scale = Math.min(1, maxDim / Math.max(vis.sw, vis.sh));
+        const w = Math.max(1, Math.round(vis.sw * scale));
+        const h = Math.max(1, Math.round(vis.sh * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, vis.sx, vis.sy, vis.sw, vis.sh, 0, 0, w, h);
+
+        const src = cv.imread(canvas);
+        // Map corners (video coords) into the canvas coordinate space
+        const pts = corners.map(c => ({
+            x: (c.x - vis.sx) * scale,
+            y: (c.y - vis.sy) * scale
+        }));
+        const dist = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+        const dstW = Math.max(1, Math.round(Math.max(dist(pts[0], pts[1]), dist(pts[3], pts[2]))));
+        const dstH = Math.max(1, Math.round(Math.max(dist(pts[0], pts[3]), dist(pts[1], pts[2]))));
+
+        const srcMat = new cv.Mat(4, 1, cv.CV_32FC2);
+        pts.forEach((p, i) => srcMat.ptr(i).set(p.x, p.y));
+        const dstMat = new cv.Mat(4, 1, cv.CV_32FC2);
+        dstMat.ptr(0).set(0, 0);
+        dstMat.ptr(1).set(dstW - 1, 0);
+        dstMat.ptr(2).set(dstW - 1, dstH - 1);
+        dstMat.ptr(3).set(0, dstH - 1);
+
+        const M = cv.getPerspectiveTransform(srcMat, dstMat);
+        const dst = new cv.Mat(dstH, dstW, cv.CV_8UC4);
+        cv.warpPerspective(src, dst, M, new cv.Size(dstW, dstH));
+
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = dstW;
+        outCanvas.height = dstH;
+        cv.imshow(outCanvas, dst);
+
+        src.delete(); dst.delete(); M.delete(); srcMat.delete(); dstMat.delete();
+
+        return outCanvas.toDataURL('image/jpeg', 0.92);
+    },
+
+    // Draw the detected box corners over the live viewfinder so the user can
+    // see what will be captured.
+    _drawBoxOverlay(corners) {
+        const overlay = document.getElementById('cam-box-overlay');
+        const vf = document.getElementById('cam-viewfinder');
+        if (!overlay || !vf) return;
+        const rect = vf.getBoundingClientRect();
+        overlay.width = Math.max(1, Math.round(rect.width));
+        overlay.height = Math.max(1, Math.round(rect.height));
+        const ctx = overlay.getContext('2d');
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        const vis = this._visibleRegion();
+        const mapX = x => (x - vis.sx) / vis.sw * overlay.width;
+        const mapY = y => (y - vis.sy) / vis.sh * overlay.height;
+        ctx.strokeStyle = '#00e676';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(mapX(corners[0].x), mapY(corners[0].y));
+        for (let i = 1; i < 4; i++) ctx.lineTo(mapX(corners[i].x), mapY(corners[i].y));
+        ctx.closePath();
+        ctx.stroke();
+        ctx.fillStyle = '#00e676';
+        corners.forEach(c => {
+            ctx.beginPath();
+            ctx.arc(mapX(c.x), mapY(c.y), 5, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        overlay.classList.remove('hidden');
+    },
+
+    _clearBoxOverlay() {
+        const overlay = document.getElementById('cam-box-overlay');
+        if (!overlay) return;
+        overlay.classList.add('hidden');
+        const ctx = overlay.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, overlay.width, overlay.height);
+    },
+
+    // Save the capture to the server for diagnosing OCR issues (fire-and-forget)
+    _saveCapture(image) {
+        const label = this.capturedBarcode ? 'bc_' + this.capturedBarcode : 'capture';
+        fetch('/ocr/capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image, label })
+        }).catch(e => console.warn('Capture save failed:', e));
     },
 
     // ---------- OCR + prefill ----------
