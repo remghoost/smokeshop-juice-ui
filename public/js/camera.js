@@ -2,8 +2,8 @@
 // Three flows share one modal:
 //   • Add (Input Mode): (1) live barcode scan via ZXing. If the barcode is
 //     already a known product, a popup asks how many to add to stock. If it's
-//     new, (2) photograph the box front — the box is auto-detected, cropped,
-//     and perspective-corrected (flattened) client-side with OpenCV.js, then
+//     new, (2) photograph the box front — the box is auto-detected and cropped
+//     to a tight bounding box client-side (pure JS, no dependencies), then
 //     POSTed to /ocr/extract (which forwards it to the local llama.cpp vision
 //     server). The returned fields pre-fill the add form for a quick review.
 //   • Sell (Sell Mode): (1) live barcode scan, then the code is POSTed to
@@ -31,9 +31,6 @@ const Camera = {
     _lastCode: null,
     _consecutive: 0,
     _decodeTimer: null,
-
-    // OpenCV.js (box detection / perspective correction) — loaded lazily
-    _cvPromise: null,
 
     // Tuning for the live scan. We decode a central ROI of the *visible*
     // region (not the whole frame) on a throttled timer, and require a few
@@ -507,20 +504,16 @@ const Camera = {
         if (!this.video || this.video.videoWidth === 0) return;
         this.setBusy(true, 'Detecting the box…');
         let photo = null;
-        let warped = false;
+        let cropped = false;
         try {
-            if (await this._cvReady()) {
-                const corners = this._detectBoxCorners(this.video);
-                if (corners) {
-                    this._drawBoxOverlay(corners);
-                    // Only warp if the detected box is a reasonable size
-                    const vis = this._visibleRegion();
-                    const boxW = Math.max(...corners.map(c => c.x)) - Math.min(...corners.map(c => c.x));
-                    const boxH = Math.max(...corners.map(c => c.y)) - Math.min(...corners.map(c => c.y));
-                    if (boxW > vis.sw * 0.15 && boxH > vis.sh * 0.15) {
-                        photo = this._warpBox(this.video, corners);
-                        warped = true;
-                    }
+            const box = this._detectBoxBBox(this.video);
+            if (box) {
+                this._drawBoxOverlay(box);
+                // Only crop if the detected box is a reasonable size
+                const vis = this._visibleRegion();
+                if (box.w > vis.sw * 0.15 && box.h > vis.sh * 0.15) {
+                    photo = this._cropToBox(this.video, box);
+                    cropped = true;
                 }
             }
         } catch (e) {
@@ -532,9 +525,9 @@ const Camera = {
         this.capturedPhoto = photo;
         document.getElementById('cam-photo-preview').src = photo;
         this.showStep('result');
-        // Only save the post-processed (warped) capture so we can verify the
-        // perspective correction is consistent. Skip the full-frame fallback.
-        if (warped) this._saveCapture(photo);
+        // Only save the post-processed (cropped) capture so we can verify the
+        // box detection is consistent. Skip the full-frame fallback.
+        if (cropped) this._saveCapture(photo);
         // runOcr() has a `if (this.busy) return` guard, so clear the flag
         // (set during detection) before handing off to it.
         this.busy = false;
@@ -561,31 +554,16 @@ const Camera = {
         return canvas.toDataURL('image/jpeg', 0.92);
     },
 
-    // ---------- OpenCV.js: box detection + perspective correction ----------
-    // Load OpenCV.js lazily (it's ~11MB) the first time we need it.
-    _cvReady() {
-        if (window.cv) return Promise.resolve(true);
-        if (!this._cvPromise) {
-            this._cvPromise = new Promise((resolve, reject) => {
-                const s = document.createElement('script');
-                s.src = '/vendor/opencv.js';
-                s.onload = () => resolve(true);
-                s.onerror = () => reject(new Error('OpenCV failed to load'));
-                document.head.appendChild(s);
-            });
-        }
-        return this._cvPromise;
-    },
-
-    // Detect the 4 corners of the product box in the current frame.
-    // Returns an array of 4 {x, y} points in *video* coordinates (ordered
-    // top-left, top-right, bottom-right, bottom-left), or null if no box-like
-    // quadrilateral is found.
-    _detectBoxCorners(video) {
-        const cv = window.cv;
+    // ---------- Box detection (pure JS, no dependencies) ----------
+    // Find the axis-aligned bounding box of the product in the current frame.
+    // We downscale the visible region, compute a Sobel edge map, and take the
+    // bounding box of the strong edges. The box is the dominant edge source in
+    // the frame, so this gives a tight crop around it. Returns {x, y, w, h} in
+    // *video* coordinates, or null if no box-like region is found.
+    _detectBoxBBox(video) {
         const vis = this._visibleRegion();
-        // Work at a moderate resolution for speed
-        const maxDim = 640;
+        // Downscale for speed
+        const maxDim = 320;
         const scale = Math.min(1, maxDim / Math.max(vis.sw, vis.sh));
         const w = Math.max(1, Math.round(vis.sw * scale));
         const h = Math.max(1, Math.round(vis.sh * scale));
@@ -594,123 +572,89 @@ const Camera = {
         canvas.height = h;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, vis.sx, vis.sy, vis.sw, vis.sh, 0, 0, w, h);
+        const data = ctx.getImageData(0, 0, w, h).data;
 
-        const src = cv.imread(canvas);
-        const gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        const blurred = new cv.Mat();
-        cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-        const edges = new cv.Mat();
-        cv.Canny(blurred, edges, 50, 150);
-        const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
-        const dilated = new cv.Mat();
-        cv.dilate(edges, dilated, kernel);
-
-        const contours = new cv.MatVector();
-        const hierarchy = new cv.Mat();
-        cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-        let best = null;
-        let bestArea = 0;
-        const minArea = (w * h) * 0.05; // box should be at least 5% of the frame
-        for (let i = 0; i < contours.size(); i++) {
-            const cnt = contours.get(i);
-            const area = cv.contourArea(cnt);
-            if (area >= minArea) {
-                const peri = cv.arcLength(cnt, true);
-                const approx = new cv.Mat();
-                cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-                if (approx.rows === 4 && cv.isContourConvex(approx) && area > bestArea) {
-                    const pts = [];
-                    for (let j = 0; j < 4; j++) {
-                        const p = approx.intPtr(j);
-                        pts.push({ x: p[0], y: p[1] });
-                    }
-                    bestArea = area;
-                    best = pts;
-                }
-                approx.delete();
-            }
-            cnt.delete();
+        // Grayscale
+        const gray = new Float32Array(w * h);
+        for (let i = 0; i < w * h; i++) {
+            gray[i] = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
         }
 
-        // Release all Mats to avoid WASM memory leaks
-        src.delete(); gray.delete(); blurred.delete(); edges.delete();
-        kernel.delete(); dilated.delete(); contours.delete(); hierarchy.delete();
+        // Sobel gradient magnitude
+        const mag = new Float32Array(w * h);
+        let maxMag = 0;
+        for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+                const i = y * w + x;
+                const gx = -gray[i - w - 1] - 2 * gray[i - 1] - gray[i + w - 1]
+                    + gray[i - w + 1] + 2 * gray[i + 1] + gray[i + w + 1];
+                const gy = -gray[i - w - 1] - 2 * gray[i - w] - gray[i - w + 1]
+                    + gray[i + w - 1] + 2 * gray[i + w] + gray[i + w + 1];
+                const m = Math.sqrt(gx * gx + gy * gy);
+                mag[i] = m;
+                if (m > maxMag) maxMag = m;
+            }
+        }
 
-        if (!best) return null;
-        const ordered = this._orderPoints(best);
+        // Bounding box of the strong edges (the box outline). A fraction of the
+        // max keeps us on the sharpest edges and ignores faint background texture.
+        const thresh = maxMag * 0.3;
+        let minX = w, minY = h, maxX = 0, maxY = 0, count = 0;
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (mag[y * w + x] > thresh) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    count++;
+                }
+            }
+        }
+        // Not enough strong edges -> no box
+        if (count < w * h * 0.005) return null;
+
         // Scale back up to video coordinates
         const invScale = 1 / scale;
-        return ordered.map(p => ({
-            x: p.x * invScale + vis.sx,
-            y: p.y * invScale + vis.sy
-        }));
+        return {
+            x: minX * invScale + vis.sx,
+            y: minY * invScale + vis.sy,
+            w: (maxX - minX) * invScale,
+            h: (maxY - minY) * invScale
+        };
     },
 
-    // Order 4 points as top-left, top-right, bottom-right, bottom-left
-    _orderPoints(pts) {
-        const sum = pts.map(p => ({ p, s: p.x + p.y, d: p.y - p.x }));
-        sum.sort((a, b) => a.s - b.s);
-        const tl = sum[0].p;
-        const br = sum[3].p;
-        sum.sort((a, b) => a.d - b.d);
-        const bl = sum[0].p;
-        const tr = sum[3].p;
-        return [tl, tr, br, bl];
-    },
-
-    // Warp the detected box to a flat, axis-aligned rectangle and return it as
-    // a JPEG data URL. This "squares up" a skewed/angled shot so the vision
-    // model sees the box front-on.
-    _warpBox(video, corners) {
-        const cv = window.cv;
+    // Crop the frame to the detected box (with a small margin) and return it as
+    // a JPEG data URL. This removes the background and gives the vision model
+    // more pixels on the box text.
+    _cropToBox(video, box) {
         const vis = this._visibleRegion();
+        const margin = 0.05;
+        let x = box.x - box.w * margin;
+        let y = box.y - box.h * margin;
+        let w = box.w * (1 + 2 * margin);
+        let h = box.h * (1 + 2 * margin);
+        // Clamp to the visible region
+        x = Math.max(vis.sx, x);
+        y = Math.max(vis.sy, y);
+        if (x + w > vis.sx + vis.sw) w = vis.sx + vis.sw - x;
+        if (y + h > vis.sy + vis.sh) h = vis.sy + vis.sh - y;
+        w = Math.max(1, w);
+        h = Math.max(1, h);
+
         const maxDim = 1600;
-        const scale = Math.min(1, maxDim / Math.max(vis.sw, vis.sh));
-        const w = Math.max(1, Math.round(vis.sw * scale));
-        const h = Math.max(1, Math.round(vis.sh * scale));
+        const scale = Math.min(1, maxDim / Math.max(w, h));
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, vis.sx, vis.sy, vis.sw, vis.sh, 0, 0, w, h);
-
-        const src = cv.imread(canvas);
-        // Map corners (video coords) into the canvas coordinate space
-        const pts = corners.map(c => ({
-            x: (c.x - vis.sx) * scale,
-            y: (c.y - vis.sy) * scale
-        }));
-        const dist = (a, b) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-        const dstW = Math.max(1, Math.round(Math.max(dist(pts[0], pts[1]), dist(pts[3], pts[2]))));
-        const dstH = Math.max(1, Math.round(Math.max(dist(pts[0], pts[3]), dist(pts[1], pts[2]))));
-
-        const srcMat = new cv.Mat(4, 1, cv.CV_32FC2);
-        pts.forEach((p, i) => srcMat.ptr(i).set(p.x, p.y));
-        const dstMat = new cv.Mat(4, 1, cv.CV_32FC2);
-        dstMat.ptr(0).set(0, 0);
-        dstMat.ptr(1).set(dstW - 1, 0);
-        dstMat.ptr(2).set(dstW - 1, dstH - 1);
-        dstMat.ptr(3).set(0, dstH - 1);
-
-        const M = cv.getPerspectiveTransform(srcMat, dstMat);
-        const dst = new cv.Mat(dstH, dstW, cv.CV_8UC4);
-        cv.warpPerspective(src, dst, M, new cv.Size(dstW, dstH));
-
-        const outCanvas = document.createElement('canvas');
-        outCanvas.width = dstW;
-        outCanvas.height = dstH;
-        cv.imshow(outCanvas, dst);
-
-        src.delete(); dst.delete(); M.delete(); srcMat.delete(); dstMat.delete();
-
-        return outCanvas.toDataURL('image/jpeg', 0.92);
+        ctx.drawImage(video, x, y, w, h, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL('image/jpeg', 0.92);
     },
 
-    // Draw the detected box corners over the live viewfinder so the user can
-    // see what will be captured.
-    _drawBoxOverlay(corners) {
+    // Draw the detected box over the live viewfinder so the user can see what
+    // will be captured.
+    _drawBoxOverlay(box) {
         const overlay = document.getElementById('cam-box-overlay');
         const vf = document.getElementById('cam-viewfinder');
         if (!overlay || !vf) return;
@@ -724,17 +668,7 @@ const Camera = {
         const mapY = y => (y - vis.sy) / vis.sh * overlay.height;
         ctx.strokeStyle = '#00e676';
         ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(mapX(corners[0].x), mapY(corners[0].y));
-        for (let i = 1; i < 4; i++) ctx.lineTo(mapX(corners[i].x), mapY(corners[i].y));
-        ctx.closePath();
-        ctx.stroke();
-        ctx.fillStyle = '#00e676';
-        corners.forEach(c => {
-            ctx.beginPath();
-            ctx.arc(mapX(c.x), mapY(c.y), 5, 0, Math.PI * 2);
-            ctx.fill();
-        });
+        ctx.strokeRect(mapX(box.x), mapY(box.y), box.w / vis.sw * overlay.width, box.h / vis.sh * overlay.height);
         overlay.classList.remove('hidden');
     },
 
