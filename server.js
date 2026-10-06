@@ -747,6 +747,7 @@ async function extractFromImage(dataUrl, type) {
   );
   const brandNames = brandRows.map((r) => r.name);
   const prompt = buildOcrPrompt(type, brandNames);
+  console.log(`[OCR] Prompt (${type}):\n${prompt}`);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLAMA_TIMEOUT_MS);
