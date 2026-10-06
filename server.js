@@ -1,6 +1,7 @@
 const express = require("express");
 const path = require("path");
 const db = require("./db");
+const { buildOcrPrompt } = require("./ocr-prompt");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -738,19 +739,7 @@ async function matchBrand(name, type) {
 // Ask the vision model to extract the product fields from a box photo.
 // Returns the parsed { brand, flavor, mg } object, or null if unparseable.
 async function extractFromImage(dataUrl, type) {
-  const label = type === "disposable" ? "disposable vape" : "vape juice";
-  const prompt =
-    `You are reading the front of a ${label} product box. ` +
-    'The box is either for a disposable vape or vape juice' +
-    `Extract the brand name, flavor name, and nicotine strength. ` +
-    `Reply with ONLY a JSON object, no other text: ` +
-    `{"brand": "...", "flavor": "...", "mg": <number>}. ` +
-    'Brand names that exist for disposables are: Geek Bar Pulse, Geek Bar Pulse X, Geek Bar Pulse X2, Foger Pod, Foger Kit, Flum UT Bar, Flum Mello Pro, Foger Bit, Movkin Pod, Movkin Kit.' +
-    'Flavor names should not be in all caps. Only the first letter of each word should be capatalized.' +
-    'Brand names that exist for juices are: Juice Head, Juice Head (Freeze), Reds, Reds (Iced), The One, Pod Juice, Pod Juice (Freeze), Cloud Nurdz, and Cloud Nurdz (Freeze)' +
-    'If the box has the word "Freeze" or "Iced" anywhere on it, it is the "Freeze" or "Iced" variant of that juice brand.' +
-    `mg is nicotine in mg/ml. ` +
-    `Use null for any field you cannot read.`;
+  const prompt = buildOcrPrompt(type);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLAMA_TIMEOUT_MS);
