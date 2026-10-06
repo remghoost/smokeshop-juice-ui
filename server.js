@@ -748,9 +748,8 @@ async function extractFromImage(dataUrl, type) {
     'Brand names that exist for disposables are: Geek Bar Pulse, Geek Bar Pulse X, Geek Bar Pulse X2, Foger Pod, Foger Kit, Flum UT Bar, Flum Mello Pro, Foger Bit, Movkin Pod, Movkin Kit.' +
     'Flavor names should not be in all caps. Only the first letter of each word should be capatalized.' +
     'Brand names that exist for juices are: Juice Head, Juice Head (Freeze), Reds, Reds (Iced), The One, Pod Juice, Pod Juice (Freeze), Cloud Nurdz, and Cloud Nurdz (Freeze)' +
-    'If the box has the word "Freeze" or "Iced" on it anywhere, it is the "Freeze" or "Iced" variant of that juice brand.' +
-    `mg is nicotine in mg/ml. If the box shows a percentage, convert it ` +
-    `(1% = 10mg/ml, 2% = 20mg/ml, 5% = 50mg/ml). ` +
+    'If the box has the word "Freeze" or "Iced" anywhere on it, it is the "Freeze" or "Iced" variant of that juice brand.' +
+    `mg is nicotine in mg/ml. ` +
     `Use null for any field you cannot read.`;
 
   const controller = new AbortController();
