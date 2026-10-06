@@ -507,6 +507,7 @@ const Camera = {
         if (!this.video || this.video.videoWidth === 0) return;
         this.setBusy(true, 'Detecting the box…');
         let photo = null;
+        let warped = false;
         try {
             if (await this._cvReady()) {
                 const corners = this._detectBoxCorners(this.video);
@@ -518,6 +519,7 @@ const Camera = {
                     const boxH = Math.max(...corners.map(c => c.y)) - Math.min(...corners.map(c => c.y));
                     if (boxW > vis.sw * 0.15 && boxH > vis.sh * 0.15) {
                         photo = this._warpBox(this.video, corners);
+                        warped = true;
                     }
                 }
             }
@@ -530,7 +532,9 @@ const Camera = {
         this.capturedPhoto = photo;
         document.getElementById('cam-photo-preview').src = photo;
         this.showStep('result');
-        this._saveCapture(photo);
+        // Only save the post-processed (warped) capture so we can verify the
+        // perspective correction is consistent. Skip the full-frame fallback.
+        if (warped) this._saveCapture(photo);
         // runOcr() has a `if (this.busy) return` guard, so clear the flag
         // (set during detection) before handing off to it.
         this.busy = false;
