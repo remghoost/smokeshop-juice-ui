@@ -147,6 +147,8 @@
         <div id="sales-list" class="sales-list">
             <p class="sales-empty">No sales yet today.</p>
         </div>
+        <button type="button" class="btn-success sell-cam-btn" onclick="Camera.openSell()"
+                title="Scan a barcode with the phone camera to sell one unit">📷 Use camera to sell</button>
         <a href="/sales" class="sales-link">View full sales report →</a>
     </aside>
     </div><!-- /.main-layout -->
@@ -159,6 +161,16 @@
             <div id="cam-step-scan" class="cam-step">
                 <h2>1. Scan the barcode</h2>
                 <p class="cam-hint">Point the camera at the product's barcode. It captures automatically.</p>
+            </div>
+
+            <div id="cam-step-sell" class="cam-step hidden">
+                <h2>Scan to sell</h2>
+                <p class="cam-hint">Point the camera at the product's barcode. It sells one unit automatically.</p>
+                <div id="cam-sell-busy" class="cam-busy hidden">Selling…</div>
+                <div id="cam-sell-result" class="cam-ocr-result hidden"></div>
+                <div id="cam-sell-actions" class="cam-shutter-row hidden">
+                    <button type="button" class="btn-primary cam-shutter" onclick="Camera.scanNext()">📷 Scan next</button>
+                </div>
             </div>
 
             <div id="cam-step-photo" class="cam-step hidden">

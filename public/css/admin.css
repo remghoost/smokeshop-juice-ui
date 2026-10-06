@@ -468,6 +468,15 @@ th:hover {
     text-decoration: none;
 }
 
+/* "Use camera to sell" button (Sell Mode, in the sales panel) */
+.sell-cam-btn {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px 16px;
+    font-size: 1rem;
+}
+
 .sales-link:hover {
     text-decoration: underline;
 }

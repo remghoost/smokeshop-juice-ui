@@ -1,8 +1,11 @@
-// ===== Camera data entry (mobile, Input Mode) =====
-// Two-step flow: (1) live barcode scan via ZXing, (2) photo of the box front.
-// The photo is downscaled client-side, POSTed to /ocr/extract (which forwards
-// it to the local llama.cpp vision server), and the returned fields pre-fill
-// the add form for a quick human review before submitting.
+// ===== Camera data entry (mobile) =====
+// Two flows share one modal:
+//   • Add (Input Mode): (1) live barcode scan via ZXing, (2) photo of the box
+//     front. The photo is downscaled client-side, POSTed to /ocr/extract
+//     (which forwards it to the local llama.cpp vision server), and the
+//     returned fields pre-fill the add form for a quick human review.
+//   • Sell (Sell Mode): (1) live barcode scan, then the code is POSTed to
+//     /scan to sell one unit — no USB barcode reader required.
 //
 // Requires a secure context (HTTPS via `tailscale serve` or localhost) for
 // camera access.
@@ -12,28 +15,69 @@ const Camera = {
     video: null,
     stream: null,
     reader: null,
-    scanControls: null, // controls object returned by decodeFromVideoElement (has .stop())
+    mode: 'add', // 'add' (two-step data entry) | 'sell' (scan to sell)
     scanning: false,
     capturedBarcode: null,
     capturedPhoto: null, // data URL
-    ocrBusy: false,
+    busy: false, // true while an async op (OCR / sell) is in flight
+
+    // Decode-loop state (cropped, throttled, consecutive-read)
+    _decodeCanvas: null,
+    _decodeCtx: null,
+    _lastCode: null,
+    _consecutive: 0,
+    _decodeTimer: null,
+
+    // Tuning for the live scan. We decode a central ROI of the *visible*
+    // region (not the whole frame) on a throttled timer, and require a few
+    // identical reads in a row. This is much faster on mobile and avoids the
+    // occasional misread you get from decoding partial/edge barcodes.
+    ROI_FRACTION: 0.8, // fraction of the visible region to decode
+    DECODE_MS: 100, // decode at ~10 fps
+    REQUIRED_READS: 2, // consecutive identical reads before accepting
 
     // ---------- Modal ----------
     open() {
         if (typeof getScanMode === 'function' && getScanMode() !== 'input') {
             toggleScanMode(); // camera entry only makes sense in Input Mode
         }
+        this.mode = 'add';
+        this._reset();
+        this.showStep('scan');
+        this._show();
+        this.startCamera().then(() => {
+            if (this.stream) this.startBarcodeScan();
+        });
+    },
+
+    openSell() {
+        this.mode = 'sell';
+        this._reset();
+        this.showStep('sell');
+        this._show();
+        this.startCamera().then(() => {
+            if (this.stream) this.startBarcodeScan();
+        });
+    },
+
+    _reset() {
         this.modal = document.getElementById('camera-modal');
         this.video = document.getElementById('camera-video');
         this.capturedBarcode = null;
         this.capturedPhoto = null;
-        this.ocrBusy = false;
-        this.showStep('scan');
+        this.busy = false;
+        this._lastCode = null;
+        this._consecutive = 0;
+        // Clear any previous sell result / actions / busy indicator
+        ['cam-sell-result', 'cam-sell-actions', 'cam-sell-busy'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('hidden');
+        });
+    },
+
+    _show() {
         this.modal.classList.remove('hidden');
         document.body.classList.add('modal-open');
-        this.startCamera().then(() => {
-            if (this.stream) this.startBarcodeScan();
-        });
     },
 
     close() {
@@ -48,14 +92,16 @@ const Camera = {
         document.getElementById('cam-step-scan').classList.toggle('hidden', step !== 'scan');
         document.getElementById('cam-step-photo').classList.toggle('hidden', step !== 'photo');
         document.getElementById('cam-step-result').classList.toggle('hidden', step !== 'result');
-        // Shared viewfinder is visible in the scan + photo steps; the scanline
-        // only in the scan step; the shutter button only in the photo step.
+        document.getElementById('cam-step-sell').classList.toggle('hidden', step !== 'sell');
+        // Shared viewfinder is visible in the scan + photo + sell steps; the
+        // scanline in the scan + sell steps; the shutter only in the photo step.
         document.getElementById('cam-viewfinder').classList.toggle('hidden', step === 'result');
-        document.getElementById('cam-scanline').classList.toggle('hidden', step !== 'scan');
+        document.getElementById('cam-scanline').classList.toggle('hidden', step !== 'scan' && step !== 'sell');
         document.getElementById('cam-shutter-row').classList.toggle('hidden', step !== 'photo');
     },
 
     setBusy(busy, text) {
+        this.busy = busy;
         const el = document.getElementById('cam-busy');
         el.classList.toggle('hidden', !busy);
         if (text) el.textContent = text;
@@ -77,9 +123,10 @@ const Camera = {
     },
 
     stopCamera() {
-        if (this.scanControls) {
-            try { this.scanControls.stop(); } catch (e) {}
-            this.scanControls = null;
+        this.scanning = false;
+        if (this._decodeTimer) {
+            clearTimeout(this._decodeTimer);
+            this._decodeTimer = null;
         }
         this.reader = null;
         if (this.stream) {
@@ -87,7 +134,6 @@ const Camera = {
             this.stream = null;
         }
         if (this.video) this.video.srcObject = null;
-        this.scanning = false;
     },
 
     showCameraError(err) {
@@ -105,10 +151,13 @@ const Camera = {
     },
 
     // ---------- Step 1: live barcode scan ----------
-    // decodeFromVideoElement runs until stopped; its callback fires on each
-    // decode attempt (result, error, controls). It's async and resolves to the
-    // controls object, which we keep so stopCamera() can halt the loop.
-    async startBarcodeScan() {
+    // We decode a cropped, central region of the frame on a throttled timer
+    // (instead of the full frame every animation frame). The crop matches the
+    // 4:3 viewfinder so we only decode what the user can actually see, which
+    // is far faster on mobile and avoids decoding partial barcodes at the
+    // edges. Requiring a couple of identical reads in a row kills the
+    // occasional single-frame misread.
+    startBarcodeScan() {
         const msg = document.getElementById('cam-error');
         msg.classList.add('hidden');
         if (!window.ZXingBrowser || !window.ZXing) {
@@ -129,25 +178,139 @@ const Camera = {
             window.ZXing.BarcodeFormat.QR_CODE
         ]);
         this.reader = new window.ZXingBrowser.BrowserMultiFormatReader(hints);
-        this.scanning = true;
-        try {
-            this.scanControls = await this.reader.decodeFromVideoElement(this.video, (decoded) => {
-                if (decoded && this.scanning) {
-                    this.scanning = false;
-                    this.onBarcode(decoded.getText());
-                }
-            });
-        } catch (err) {
-            // video failed to play / decode setup failed
-            this.showCameraError(err);
+        if (!this._decodeCanvas) {
+            this._decodeCanvas = document.createElement('canvas');
+            this._decodeCtx = this._decodeCanvas.getContext('2d', { willReadFrequently: true });
         }
+        this._lastCode = null;
+        this._consecutive = 0;
+        this.scanning = true;
+        this._decodeLoop();
+    },
+
+    _decodeLoop() {
+        if (!this.scanning) return;
+        const video = this.video;
+        if (video && video.videoWidth > 0 && this.reader) {
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+
+            // Work out the region the viewfinder actually shows (object-fit:
+            // cover on a 4:3 box), then decode a central portion of it.
+            const viewAspect = 4 / 3; // matches .cam-viewfinder aspect-ratio
+            const videoAspect = vw / vh;
+            let visW, visH;
+            if (videoAspect > viewAspect) {
+                // Video is wider than the viewfinder: the sides are cropped.
+                visH = vh;
+                visW = vh * viewAspect;
+            } else {
+                // Video is taller than the viewfinder: top/bottom are cropped.
+                visW = vw;
+                visH = vw / viewAspect;
+            }
+            const roiW = Math.round(visW * this.ROI_FRACTION);
+            const roiH = Math.round(visH * this.ROI_FRACTION);
+            const sx = Math.round((vw - roiW) / 2);
+            const sy = Math.round((vh - roiH) / 2);
+
+            const canvas = this._decodeCanvas;
+            if (canvas.width !== roiW) canvas.width = roiW;
+            if (canvas.height !== roiH) canvas.height = roiH;
+            this._decodeCtx.drawImage(video, sx, sy, roiW, roiH, 0, 0, roiW, roiH);
+
+            try {
+                const result = this.reader.decodeFromCanvas(canvas);
+                if (result) {
+                    const code = result.getText();
+                    if (code === this._lastCode) {
+                        this._consecutive++;
+                    } else {
+                        this._lastCode = code;
+                        this._consecutive = 1;
+                    }
+                    if (this._consecutive >= this.REQUIRED_READS) {
+                        this.scanning = false;
+                        this.onBarcode(code);
+                        return;
+                    }
+                }
+            } catch (e) {
+                // No barcode in this frame — keep scanning.
+            }
+        }
+        this._decodeTimer = setTimeout(() => this._decodeLoop(), this.DECODE_MS);
     },
 
     onBarcode(code) {
+        if (this.mode === 'sell') {
+            this.sellBarcode(code);
+            return;
+        }
         this.capturedBarcode = code;
         document.getElementById('cam-barcode-value').textContent = code;
         this.showStep('photo');
         this.setBusy(false);
+    },
+
+    // ---------- Sell flow: scan a barcode, sell one unit ----------
+    async sellBarcode(code) {
+        this.busy = true;
+        const resultEl = document.getElementById('cam-sell-result');
+        const actionsEl = document.getElementById('cam-sell-actions');
+        const busyEl = document.getElementById('cam-sell-busy');
+        resultEl.classList.add('hidden');
+        actionsEl.classList.add('hidden');
+        busyEl.classList.remove('hidden');
+        try {
+            const response = await fetch('/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.error || 'Scan failed');
+            }
+            if (data.sold) {
+                // Keep the table + sales panel in sync (they may be hidden in
+                // Sell Mode, but the data should still update).
+                const input = document.querySelector(`input.stock-input[data-id="${data.id}"]`);
+                if (input) input.value = data.stock;
+                if (data.deactivated && typeof updateRowActiveState === 'function') {
+                    updateRowActiveState(data.id, false);
+                }
+                if (data.sale && typeof prependSale === 'function') prependSale(data.sale);
+                let msg = `${data.label} sold`;
+                msg += data.outOfStock ? ' — OUT OF STOCK (disabled)' : ` — ${data.stock} left`;
+                this.showSellResult(msg, 'ok');
+            } else if (data.unknown) {
+                this.showSellResult(`Unknown barcode: ${data.code}`, 'fail');
+            } else if (data.inactive) {
+                this.showSellResult(`${data.label} is disabled`, 'fail');
+            } else {
+                this.showSellResult('Scan failed', 'fail');
+            }
+        } catch (err) {
+            this.showSellResult(err.message || 'Scan failed', 'fail');
+        }
+        busyEl.classList.add('hidden');
+        this.busy = false;
+        actionsEl.classList.remove('hidden');
+    },
+
+    showSellResult(text, type) {
+        const el = document.getElementById('cam-sell-result');
+        el.textContent = text;
+        el.className = 'cam-ocr-result ' + type;
+        el.classList.remove('hidden');
+    },
+
+    scanNext() {
+        document.getElementById('cam-sell-result').classList.add('hidden');
+        document.getElementById('cam-sell-actions').classList.add('hidden');
+        this.showStep('sell');
+        this.startBarcodeScan();
     },
 
     // ---------- Step 2: snap the box photo ----------
@@ -174,8 +337,8 @@ const Camera = {
 
     // ---------- OCR + prefill ----------
     async runOcr() {
-        if (this.ocrBusy) return;
-        this.ocrBusy = true;
+        if (this.busy) return;
+        this.busy = true;
         this.setBusy(true, 'Reading the box...');
         const resultEl = document.getElementById('cam-ocr-result');
         resultEl.classList.add('hidden');
@@ -202,7 +365,7 @@ const Camera = {
             resultEl.textContent = err.message || 'OCR failed. Enter the details manually.';
             resultEl.className = 'cam-ocr-result fail';
         }
-        this.ocrBusy = false;
+        this.busy = false;
     },
 
     prefillForm(data) {
@@ -244,12 +407,12 @@ const Camera = {
     }
 };
 
-// Close on backdrop click or Escape (not while OCR is running)
+// Close on backdrop click or Escape (not while a scan/OCR/sell is in flight)
 document.addEventListener('click', (e) => {
-    if (e.target.id === 'camera-modal' && !Camera.ocrBusy) Camera.close();
+    if (e.target.id === 'camera-modal' && !Camera.busy) Camera.close();
 });
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && Camera.modal && !Camera.modal.classList.contains('hidden') && !Camera.ocrBusy) {
+    if (e.key === 'Escape' && Camera.modal && !Camera.modal.classList.contains('hidden') && !Camera.busy) {
         Camera.close();
     }
 });
