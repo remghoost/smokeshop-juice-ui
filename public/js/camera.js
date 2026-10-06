@@ -154,15 +154,29 @@ const Camera = {
     showCameraError(err) {
         const msg = document.getElementById('cam-error');
         let text = 'Camera unavailable: ' + (err.message || err.name || 'unknown error');
+        let retryable = false;
         if (err.name === 'NotAllowedError') {
             text = 'Camera permission denied. Allow camera access in the browser and try again.';
         } else if (err.name === 'NotFoundError') {
             text = 'No camera found on this device.';
+        } else if (err.name === 'NotReadableError') {
+            // Transient device lock — the camera is briefly held by another
+            // process. The auto-retries in startCamera() usually clear it, but
+            // if not, let the user tap to retry (the lock releases in a few s).
+            text = 'Camera is busy. Tap here to try again.';
+            retryable = true;
         } else if (!window.isSecureContext) {
             text = 'Camera requires HTTPS. Serve the app over Tailscale HTTPS (tailscale serve) to use camera entry.';
         }
         msg.textContent = text;
         msg.classList.remove('hidden');
+        msg.style.cursor = retryable ? 'pointer' : 'default';
+        msg.onclick = retryable ? () => {
+            msg.classList.add('hidden');
+            this.startCamera().then(() => {
+                if (this.stream) this.startBarcodeScan();
+            });
+        } : null;
     },
 
     // The region of the raw video frame that the viewfinder actually shows.
