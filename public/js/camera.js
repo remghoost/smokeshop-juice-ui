@@ -150,6 +150,34 @@ const Camera = {
         msg.classList.remove('hidden');
     },
 
+    // The region of the raw video frame that the viewfinder actually shows.
+    // The viewfinder is a 4:3 box with object-fit: cover, so it crops the
+    // center of the frame to 4:3. Both the barcode decoder and the photo
+    // capture use this so they operate on exactly what the user sees.
+    _visibleRegion() {
+        const video = this.video;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const viewAspect = 4 / 3; // matches .cam-viewfinder aspect-ratio
+        const videoAspect = vw / vh;
+        let visW, visH;
+        if (videoAspect > viewAspect) {
+            // Video is wider than the viewfinder: the sides are cropped.
+            visH = vh;
+            visW = vh * viewAspect;
+        } else {
+            // Video is taller than the viewfinder: top/bottom are cropped.
+            visW = vw;
+            visH = vw / viewAspect;
+        }
+        return {
+            sx: Math.round((vw - visW) / 2),
+            sy: Math.round((vh - visH) / 2),
+            sw: Math.round(visW),
+            sh: Math.round(visH)
+        };
+    },
+
     // ---------- Step 1: live barcode scan ----------
     // We decode a cropped, central region of the frame on a throttled timer
     // (instead of the full frame every animation frame). The crop matches the
@@ -192,27 +220,13 @@ const Camera = {
         if (!this.scanning) return;
         const video = this.video;
         if (video && video.videoWidth > 0 && this.reader) {
-            const vw = video.videoWidth;
-            const vh = video.videoHeight;
-
             // Work out the region the viewfinder actually shows (object-fit:
             // cover on a 4:3 box), then decode a central portion of it.
-            const viewAspect = 4 / 3; // matches .cam-viewfinder aspect-ratio
-            const videoAspect = vw / vh;
-            let visW, visH;
-            if (videoAspect > viewAspect) {
-                // Video is wider than the viewfinder: the sides are cropped.
-                visH = vh;
-                visW = vh * viewAspect;
-            } else {
-                // Video is taller than the viewfinder: top/bottom are cropped.
-                visW = vw;
-                visH = vw / viewAspect;
-            }
-            const roiW = Math.round(visW * this.ROI_FRACTION);
-            const roiH = Math.round(visH * this.ROI_FRACTION);
-            const sx = Math.round((vw - roiW) / 2);
-            const sy = Math.round((vh - roiH) / 2);
+            const vis = this._visibleRegion();
+            const roiW = Math.round(vis.sw * this.ROI_FRACTION);
+            const roiH = Math.round(vis.sh * this.ROI_FRACTION);
+            const sx = vis.sx + Math.round((vis.sw - roiW) / 2);
+            const sy = vis.sy + Math.round((vis.sh - roiH) / 2);
 
             const canvas = this._decodeCanvas;
             if (canvas.width !== roiW) canvas.width = roiW;
@@ -316,14 +330,20 @@ const Camera = {
     // ---------- Step 2: snap the box photo ----------
     snapPhoto() {
         if (!this.video || this.video.videoWidth === 0) return;
-        const maxDim = 1024; // downscale: the vision model doesn't need phone resolution
-        const scale = Math.min(1, maxDim / Math.max(this.video.videoWidth, this.video.videoHeight));
+        // Capture exactly the region the viewfinder shows (4:3, object-fit:
+        // cover) so the box fills the frame the way it looks on screen. The
+        // old code grabbed the whole (often 16:9) frame, so the box was a
+        // small sliver surrounded by background and the vision model lost the
+        // fine detail (flavor text, mg) it needs.
+        const vis = this._visibleRegion();
+        const maxDim = 1600; // higher cap: more pixels on the box = sharper text
+        const scale = Math.min(1, maxDim / Math.max(vis.sw, vis.sh));
         const canvas = document.createElement('canvas');
-        canvas.width = Math.round(this.video.videoWidth * scale);
-        canvas.height = Math.round(this.video.videoHeight * scale);
+        canvas.width = Math.max(1, Math.round(vis.sw * scale));
+        canvas.height = Math.max(1, Math.round(vis.sh * scale));
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(this.video, 0, 0, canvas.width, canvas.height);
-        this.capturedPhoto = canvas.toDataURL('image/jpeg', 0.8);
+        ctx.drawImage(this.video, vis.sx, vis.sy, vis.sw, vis.sh, 0, 0, canvas.width, canvas.height);
+        this.capturedPhoto = canvas.toDataURL('image/jpeg', 0.92);
         document.getElementById('cam-photo-preview').src = this.capturedPhoto;
         this.showStep('result');
         this.runOcr();
