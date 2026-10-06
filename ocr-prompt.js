@@ -26,6 +26,7 @@ function buildOcrPrompt(type, brandNames) {
     "Flavor names should not be in all caps. Only the first letter of each word in the flavor names should be capitalized. " +
     freezeLine +
     `mg is nicotine in mg/ml. ` +
+    'The numbers for mg might be stylized'
     `Use null for any field you cannot read.`
   );
 }
