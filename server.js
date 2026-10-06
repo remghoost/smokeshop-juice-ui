@@ -786,6 +786,7 @@ async function extractFromImage(dataUrl, type) {
     }
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content;
+    console.log(`[OCR] Model output:\n${text}`);
     if (!text) {
       throw new Error(
         `Empty response from model (raw: ${JSON.stringify(data).slice(0, 500)})`
